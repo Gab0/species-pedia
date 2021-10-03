@@ -39,6 +39,7 @@ searchForm :: Html -> MForm Handler (FormResult Types.SpeciesQuery, Widget)
 searchForm =  renderDivs
            $  Types.SpeciesQuery
           <$> areq textField "Search Query " Nothing
+          <*> areq hiddenField "" (Just False)
 
 -- Render the page that shows query results
 postSearchR :: HandlerFor App Html
@@ -71,7 +72,10 @@ renderSingleResult index information = do
   [whamlet| <div> Result <b># #{index}</b>|]
   mapM_ (\(t, g) -> showGenusField t (g information)) genusFields
   [whamlet|<br>|]
-  mapM_ (\t -> [whamlet| #{t}|]) $ Types.threatStatuses information
+  mapM_ (\(Types.VernacularName t) -> [whamlet| #{t}<br>|])
+    $ Types.vernacularNames information
+  mapM_ (\t -> [whamlet| #{t}|])
+    $ Types.threatStatuses information
   [whamlet| <br><hr><br>|]
 
   where

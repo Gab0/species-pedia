@@ -8,6 +8,7 @@ import Data.Aeson
 
 data SpeciesQuery = SpeciesQuery
   { queryContent  :: Text
+  , jsonResponse  :: Bool
   }
   deriving Show
 
@@ -21,8 +22,14 @@ data SpeciesInformation = SpeciesInformation
   , speciesGenus   :: Maybe Text
   , speciesFamily  :: Maybe Text
   , threatStatuses :: [Text]
+  , vernacularNames :: [VernacularName]
   }
   deriving Show
+
+newtype VernacularName = VernacularName Text
+  deriving Show
+
+
 instance FromJSON RemoteResult where
   parseJSON (Object v) = RemoteResult <$> v .: "results"
   parseJSON _          = fail ""
@@ -36,4 +43,9 @@ instance FromJSON SpeciesInformation where
       <*> v .:? "genus"
       <*> v .:? "family"
       <*> v .:? "threatStatuses" .!= []
+      <*> v .:? "vernacularNames" .!= []
   parseJSON _         = fail ""
+
+instance FromJSON VernacularName where
+  parseJSON (Object v) =
+    VernacularName <$> v .: "vernacularName"

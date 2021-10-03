@@ -26,3 +26,7 @@ fetchInformationGBIF query =
 -- and their FromJSON instances.
 decodeInformationGBIF :: LUTF8.ByteString -> Either String Types.RemoteResult
 decodeInformationGBIF = eitherDecode
+
+
+fetchObservationMapGBIF :: IO UTF8.ByteString
+fetchObservationMapGBIF = return ""
