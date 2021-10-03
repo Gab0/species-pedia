@@ -8,7 +8,6 @@ module Main where
 import           Control.Applicative ((<$>), (<*>))
 import           Control.Monad
 import           Yesod
-import           Data.Foldable
 import           Yesod.Form
 import qualified Data.Text as T
 import qualified Types
@@ -48,8 +47,8 @@ postSearchR = do
   let x = evalResult result
 
   raw_gbif_response <- liftIO
-     $ fetchInformationGBIF
-     $ T.unpack x
+                     $ fetchInformationGBIF
+                     $ T.unpack x
 
   let k = decodeInformationGBIF raw_gbif_response
 
@@ -66,10 +65,13 @@ postSearchR = do
     evalResult (FormSuccess f) = Types.queryContent f
     evalResult _               = ""
 
+-- Render information for a single result from GBIF.
 renderSingleResult :: Int -> Types.SpeciesInformation -> Widget
 renderSingleResult index information = do
   [whamlet| <div> Result <b># #{index}</b>|]
   mapM_ (\(t, g) -> showGenusField t (g information)) genusFields
+  [whamlet|<br>|]
+  mapM_ (\t -> [whamlet| #{t}|]) $ Types.threatStatuses information
   [whamlet| <br><hr><br>|]
 
   where
@@ -92,7 +94,7 @@ showGenusField name value =
 
 -- This function renders the main page, which is also the search page.
 -- 'julius' templates are for javascript code.
--- 'junius' templates are for CSS style code.
+-- 'lucius' templates are for CSS style code.
 -- 'hamlet' templates are for HTML code.
 -- 'whamlet' temaplates are the same as 'hamlet',
 --   but they can show widgets with #{}
