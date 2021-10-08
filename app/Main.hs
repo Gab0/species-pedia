@@ -10,8 +10,10 @@ import           Control.Monad
 import           Yesod
 import           Yesod.Form
 import qualified Data.Text as T
+import           Data.Either
 import qualified Types
 import           RemoteResources
+import           Storage
 
 -- Define URL Routes.
 data App = App
@@ -41,27 +43,46 @@ searchForm =  renderDivs
           <$> areq textField "Search Query " Nothing
           <*> areq hiddenField "" (Just False)
 
+-- | Manage remote content retrieval and the cache routines.
+--   Fetch, insert to DB or retrieve from DB depending on
+--   DB data availability.
+manageCachedRemoteContent :: T.Text -> IO (Either String Types.RemoteResult)
+manageCachedRemoteContent query_string = do
+  cached_response   <- loadFromDatabase query_string
+
+  case cached_response of
+    Just response -> return
+                   $ Right response
+    Nothing       -> do
+      information <- decodeInformationGBIF
+        <$> fetchInformationGBIF (T.unpack query_string)
+
+      case information of
+        Left a  -> return $ Left a
+        Right (Types.RemoteResult _ content) -> do
+          k <- insertInDatabase
+             $ Types.RemoteResult query_string content
+          return information
+
+
 -- Render the page that shows query results
 postSearchR :: HandlerFor App Html
 postSearchR = do
   ((result, widget), enctype) <- runFormPost searchForm
-  let x = evalResult result
+  let query_string = evalResult result
 
-  raw_gbif_response <- liftIO
-                     $ fetchInformationGBIF
-                     $ T.unpack x
-
-  let k = decodeInformationGBIF raw_gbif_response
+  content <- liftIO
+           $ manageCachedRemoteContent query_string
 
   defaultLayout $ do
     setTitle "Search Result"
     globalHeader
-    [whamlet| <div>You searched for '#{x}'.</div>|]
+    [whamlet| <div>You searched for '#{query_string}'.</div>|]
     [whamlet| <br><br>|]
     [whamlet| <div>|]
-    case k of
-      Right (Types.RemoteResult info) -> zipWithM_ renderSingleResult [1..] info
-      _                               -> [whamlet| Error processing request.|]
+    case content of
+      Right (Types.RemoteResult _ results) -> zipWithM_ renderSingleResult [1..] results
+      _                                    -> [whamlet| Error processing request.|]
   where
     evalResult (FormSuccess f) = Types.queryContent f
     evalResult _               = ""
@@ -73,19 +94,19 @@ renderSingleResult index information = do
   mapM_ (\(t, g) -> showGenusField t (g information)) genusFields
   [whamlet|<br>|]
   mapM_ (\(Types.VernacularName t) -> [whamlet| #{t}<br>|])
-    $ Types.vernacularNames information
+    $ Types.speciesInformationVernacularNames information
   mapM_ (\t -> [whamlet| #{t}|])
-    $ Types.threatStatuses information
+    $ Types.speciesInformationStatuses information
   [whamlet| <br><hr><br>|]
 
   where
     genusFields :: [(String, Types.SpeciesInformation -> Maybe T.Text)]
     genusFields =
-      [ ("Kingdom", Types.speciesKingdom)
-      , ("Phylum", Types.speciesPhylum)
-      , ("Order", Types.speciesOrder)
-      , ("Genus", Types.speciesGenus)
-      , ("Family", Types.speciesFamily)
+      [ ("Kingdom", Types.speciesInformationKingdom)
+      , ("Phylum", Types.speciesInformationPhylum)
+      , ("Order", Types.speciesInformationOrder)
+      , ("Genus", Types.speciesInformationGenus)
+      , ("Family", Types.speciesInformationFamily)
       ]
 
 showGenusField :: String -> Maybe T.Text -> Widget
@@ -125,6 +146,7 @@ getHomeR = do
 
 main :: IO ()
 main = do
+  initializeDatabase
   putStrLn $ spacer
           ++ "Serving application on port "
           ++ show port
