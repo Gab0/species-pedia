@@ -17,6 +17,7 @@ library
   hs-source-dirs:      src
   exposed-modules:     RemoteResources
                      , Types
+                     , Storage
   build-depends:       base >= 4.7 && < 5
                      , text
                      , http-conduit
@@ -24,6 +25,8 @@ library
                      , utf8-string
                      , bytestring
                      , aeson
+                     , persistent
+                     , persistent-sqlite
   default-language:    Haskell2010
 
 executable species-backend
