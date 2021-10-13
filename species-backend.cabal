@@ -27,6 +27,7 @@ library
                      , aeson
                      , persistent
                      , persistent-sqlite
+                     , tagsoup
   default-language:    Haskell2010
 
 executable species-backend

@@ -34,6 +34,7 @@ share [mkPersist sqlSettings, mkMigrate "migrateAll"] [persistLowerCase|
 RemoteResult
     originalQuery Text
     information [SpeciesInformation]
+    images [String]
     QueryString originalQuery
     deriving Show
 SpeciesInformation
@@ -78,6 +79,7 @@ instance FromJSON RemoteResult where
   parseJSON (Object v) =  RemoteResult
                       <$> return ""
                       <*> v .: "results"
+                      <*> return []
   parseJSON _          =  fail ""
 
 instance FromJSON SpeciesInformation where

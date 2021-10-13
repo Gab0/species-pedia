@@ -56,13 +56,15 @@ manageCachedRemoteContent query_string = do
     Nothing       -> do
       information <- decodeInformationGBIF
         <$> fetchInformationGBIF (T.unpack query_string)
+      image_urls <- parseImageUrls <$> downloadImages (T.unpack query_string)
 
       case information of
-        Left a  -> return $ Left a
-        Right (Types.RemoteResult _ content) -> do
-          k <- insertInDatabase
-             $ Types.RemoteResult query_string content
-          return information
+        Left err  -> return $ Left err
+        Right (Types.RemoteResult _ content _) -> do
+          let
+            retrieved_info = Types.RemoteResult query_string content image_urls
+          k <- insertInDatabase retrieved_info
+          return $ Right retrieved_info
 
 
 -- Render the page that shows query results
@@ -80,12 +82,19 @@ postSearchR = do
     [whamlet| <div>You searched for '#{query_string}'.</div>|]
     [whamlet| <br><br>|]
     [whamlet| <div>|]
+
+    -- Show Results
     case content of
-      Right (Types.RemoteResult _ results) -> zipWithM_ renderSingleResult [1..] results
-      _                                    -> [whamlet| Error processing request.|]
+      Right result -> showResults result
+      _            -> [whamlet| Error processing request.|]
   where
     evalResult (FormSuccess f) = Types.queryContent f
     evalResult _               = ""
+
+    showResults (Types.RemoteResult _ results image_urls) = do
+      mapM_ (\image_url -> [whamlet| <img src="#{image_url}">|]) image_urls
+      [whamlet|<hr>|]
+      zipWithM_ renderSingleResult [1..] results
 
 -- Render information for a single result from GBIF.
 renderSingleResult :: Int -> Types.SpeciesInformation -> Widget
