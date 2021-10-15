@@ -1,25 +1,30 @@
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE QuasiQuotes       #-}
-{-# LANGUAGE TemplateHaskell   #-}
-{-# LANGUAGE TypeFamilies      #-}
+{-# LANGUAGE OverloadedStrings     #-}
+{-# LANGUAGE QuasiQuotes           #-}
+{-# LANGUAGE TemplateHaskell       #-}
+{-# LANGUAGE TypeFamilies          #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 module Main where
 
 import           Control.Applicative ((<$>), (<*>))
 import           Control.Monad
-import           Yesod
-import           Yesod.Form
 import qualified Data.Text as T
 import           Data.Either
-import qualified Types
+import           Data.Maybe
+
+import           Yesod
+import           Yesod.Form
+import           Yesod.Core.Json
+
 import           RemoteResources
 import           Storage
+import qualified Types
 
 -- Define URL Routes.
 data App = App
 mkYesod "App" [parseRoutes|
 / HomeR GET
 /search SearchR POST
+/search.json SearchJ POST
 |]
 
 instance Yesod App
@@ -48,22 +53,23 @@ searchForm =  renderDivs
 --   DB data availability.
 manageCachedRemoteContent :: T.Text -> IO (Either String Types.RemoteResult)
 manageCachedRemoteContent query_string = do
-  cached_response   <- loadFromDatabase query_string
+  cached_response <- loadFromDatabase query_string
 
   case cached_response of
-    Just response -> return
-                   $ Right response
-    Nothing       -> do
-      information <- decodeInformationGBIF
-        <$> fetchInformationGBIF (T.unpack query_string)
-      image_urls <- parseImageUrls <$> downloadImages (T.unpack query_string)
+    Just response ->  return
+                   $  Right response
+    Nothing       ->  do
+      information <-  decodeInformationGBIF
+                  <$> fetchInformationGBIF (T.unpack query_string)
+      image_urls  <-  parseImageUrls
+                  <$> downloadImages (T.unpack query_string)
 
       case information of
         Left err  -> return $ Left err
         Right (Types.RemoteResult _ content _) -> do
           let
             retrieved_info = Types.RemoteResult query_string content image_urls
-          k <- insertInDatabase retrieved_info
+          db_key <- insertInDatabase retrieved_info
           return $ Right retrieved_info
 
 
@@ -71,30 +77,42 @@ manageCachedRemoteContent query_string = do
 postSearchR :: HandlerFor App Html
 postSearchR = do
   ((result, widget), enctype) <- runFormPost searchForm
-  let query_string = evalResult result
+  case result of
+    FormSuccess f -> do
+      let query_string = Types.queryContent f
 
-  content <- liftIO
-           $ manageCachedRemoteContent query_string
+      either_content <- liftIO
+                      $ manageCachedRemoteContent query_string
+      showResultPage either_content
 
+    _ -> defaultLayout [whamlet| Error|]
+
+-- Define the main JSON endpoint.
+postSearchJ :: HandlerFor App Value
+postSearchJ = do
+  query_string   <- fromMaybe "" <$> lookupPostParam "query"
+
+  either_content <- liftIO
+                  $ manageCachedRemoteContent query_string
+
+  returnJson either_content
+
+showResultPage :: Either String Types.RemoteResult -> HandlerFor App Html
+showResultPage (Right content) =
   defaultLayout $ do
     setTitle "Search Result"
     globalHeader
     [whamlet| <div>You searched for '#{query_string}'.</div>|]
     [whamlet| <br><br>|]
     [whamlet| <div>|]
-
-    -- Show Results
-    case content of
-      Right result -> showResults result
-      _            -> [whamlet| Error processing request.|]
+    showResults content
   where
-    evalResult (FormSuccess f) = Types.queryContent f
-    evalResult _               = ""
-
+    query_string = T.unpack $ Types.remoteResultOriginalQuery content
     showResults (Types.RemoteResult _ results image_urls) = do
       mapM_ (\image_url -> [whamlet| <img src="#{image_url}">|]) image_urls
       [whamlet|<hr>|]
       zipWithM_ renderSingleResult [1..] results
+showResultPage _               = defaultLayout [whamlet| Error processing request.|]
 
 -- Render information for a single result from GBIF.
 renderSingleResult :: Int -> Types.SpeciesInformation -> Widget

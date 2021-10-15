@@ -7,18 +7,21 @@
 {-# LANGUAGE QuasiQuotes                #-}
 {-# LANGUAGE TemplateHaskell            #-}
 {-# LANGUAGE TypeFamilies               #-}
-{-# LANGUAGE DerivingStrategies #-}
-{-# LANGUAGE StandaloneDeriving #-}
-{-# LANGUAGE UndecidableInstances #-}
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE DerivingStrategies         #-}
+{-# LANGUAGE StandaloneDeriving         #-}
+{-# LANGUAGE UndecidableInstances       #-}
+{-# LANGUAGE DataKinds                  #-}
+{-# LANGUAGE FlexibleInstances          #-}
 
 module Types where
 
 import           Data.Text
 import           Data.Aeson
+import           Data.Aeson.TH
 import           Database.Persist
 import           Database.Persist.TH
+import           Language.Haskell.TH
+import qualified Data.ByteString.Lazy.UTF8 as LUTF8
 
 -- Declare the datatypes inside this TemplateHaskell quasi-quoter.
 -- TH creates the data types and derivings to allow the usage
@@ -98,3 +101,15 @@ instance FromJSON VernacularName where
   parseJSON (Object v) =
     VernacularName <$> v .: "vernacularName"
   parseJSON _          = fail ""
+
+-- Here we declare ToJSONS default functions
+-- with the help of Aeson.TH.
+-- Data.Persistent offers us free ToJSON and FromJSON,
+-- but those would only come together.
+-- We want to have custom FromJSONs,
+-- to retain some control over remote content parsing.
+$(deriveToJSON defaultOptions ''VernacularName)
+$(deriveToJSON defaultOptions ''SpeciesInformation)
+$(deriveToJSON defaultOptions ''RemoteResult)
+
+-- $(deriveToJSON defaultOptions ''FormResult SpeciesQuery)

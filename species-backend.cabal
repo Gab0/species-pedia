@@ -28,6 +28,8 @@ library
                      , persistent
                      , persistent-sqlite
                      , tagsoup
+                     , template-haskell
+
   default-language:    Haskell2010
 
 executable species-backend
@@ -37,8 +39,10 @@ executable species-backend
   build-depends:       base
                      , yesod
                      , yesod-form
+                     , yesod-core
                      , species-backend
                      , text
+
   default-language:    Haskell2010
 
 test-suite species-backend-test
