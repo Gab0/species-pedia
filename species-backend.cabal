@@ -29,6 +29,7 @@ library
                      , persistent-sqlite
                      , tagsoup
                      , template-haskell
+                     , generic-deriving
 
   default-language:    Haskell2010
 

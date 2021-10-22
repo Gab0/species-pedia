@@ -12,6 +12,8 @@
 {-# LANGUAGE UndecidableInstances       #-}
 {-# LANGUAGE DataKinds                  #-}
 {-# LANGUAGE FlexibleInstances          #-}
+{-# LANGUAGE DeriveAnyClass             #-}
+{-# LANGUAGE DeriveGeneric              #-}
 
 module Types where
 
@@ -22,6 +24,8 @@ import           Database.Persist
 import           Database.Persist.TH
 import           Language.Haskell.TH
 import qualified Data.ByteString.Lazy.UTF8 as LUTF8
+import           Generics.Deriving.Semigroup
+import           GHC.Generics (Generic)
 
 -- Declare the datatypes inside this TemplateHaskell quasi-quoter.
 -- TH creates the data types and derivings to allow the usage
@@ -49,9 +53,11 @@ SpeciesInformation
     statuses [Text]
     vernacularNames [VernacularName]
     deriving Show
+    deriving Eq
 VernacularName
     vernacularName Text
     deriving Show
+    deriving Eq
 |]
 
 data SpeciesQuery = SpeciesQuery
@@ -59,24 +65,6 @@ data SpeciesQuery = SpeciesQuery
   , jsonResponse  :: Bool
   }
   deriving Show
-
--- newtype RemoteResult = RemoteResult [SpeciesInformation]
---   deriving Show
-
--- data SpeciesInformation = SpeciesInformation
---   { speciesKingdom :: Maybe Text
---   , speciesPhylum  :: Maybe Text
---   , speciesOrder   :: Maybe Text
---   , speciesGenus   :: Maybe Text
---   , speciesFamily  :: Maybe Text
---   , threatStatuses :: [Text]
---   , vernacularNames :: [VernacularName]
---   }
---   deriving Show
-
---newtype VernacularName = VernacularName Text
---  deriving Show
-
 
 instance FromJSON RemoteResult where
   parseJSON (Object v) =  RemoteResult
@@ -112,4 +100,26 @@ $(deriveToJSON defaultOptions ''VernacularName)
 $(deriveToJSON defaultOptions ''SpeciesInformation)
 $(deriveToJSON defaultOptions ''RemoteResult)
 
+-- So, not going this way:
 -- $(deriveToJSON defaultOptions ''FormResult SpeciesQuery)
+
+-- | Semigroup instance is used to combine two
+-- data objects.
+-- FIXME: May improve the organization on this.
+instance Semigroup SpeciesInformation where
+   (SpeciesInformation k0 p0 o0 g0 f0 ts0 vn0) <> (SpeciesInformation k1 p1 o1 g1 f1 ts1 vn1) =
+     SpeciesInformation (maybeText k0 k1) (maybeText p0 p1) (maybeText o0 o1) (maybeText g0 g1) (maybeText f0 f1) (ts0 <> ts1) (vn0 <> vn1)
+    where
+      maybeText (Just a0) (Just a1) = Just
+                                    $ manageVariations a0 a1
+      maybeText a b                 = a <> b
+
+      manageVariations :: Text -> Text -> Text
+      manageVariations t0 t1
+        | t0 == t1  = t0
+        | otherwise = case t1 `elem` content_list of
+            True  -> t0
+            False -> intercalate separator $ t1 : content_list
+          where
+            content_list = splitOn separator t0
+            separator    = " | "
