@@ -3,6 +3,8 @@
 {-# LANGUAGE TemplateHaskell       #-}
 {-# LANGUAGE TypeFamilies          #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE FlexibleContexts      #-}
+
 module Main where
 
 import           Control.Applicative ((<$>), (<*>))
@@ -33,11 +35,42 @@ instance RenderMessage App FormMessage where
     renderMessage _ _ = defaultFormMessage
 
 globalHeader :: WidgetFor App ()
-globalHeader =
-    toWidget [lucius| h1 { color: green; } |] >>
-    toWidget [hamlet|
-                    <h1> Species Information Retriever </h1>
-                    |]
+globalHeader = do
+    toWidget [lucius|
+                    h1 {
+                      color: green;
+                    }
+                    #title {
+                      margin: auto;
+                      align: center;
+                    }
+                    .search-btn {
+                      background-color: #10a010;
+                      border-color: black;
+                      border-radius: 12px;
+                      padding: 6px;
+                      margin: 10px;
+                    }
+                    .information-category {
+                      font-weight: bold;
+                      margin: 5px;
+                      color: brown;
+                    }
+             |]
+    [whamlet|
+         <div id="title"><center><h1>Species Information Retriever</h1></center></div>
+    |]
+    toWidgetHead
+        [hamlet|
+            <meta name=keywords content="species information">
+        |]
+
+renderSearchForm :: Widget -> Enctype -> WidgetFor App ()
+renderSearchForm form_widget enctype =
+  [whamlet|<div class="search_form"><center><form method=post action=@{SearchR} enctype=#{enctype}>
+              ^{form_widget}
+            <button class="search-btn">Search</button>
+    |]
 
 -- Declare the query form.
 -- This is better explained here:
@@ -70,22 +103,27 @@ manageCachedRemoteContent query_string = do
           let
             retrieved_info = Types.RemoteResult query_string content image_urls
           db_key <- insertInDatabase retrieved_info
-          return $ Right retrieved_info
+          return  $ Right retrieved_info
 
 
 -- Render the page that shows query results
 postSearchR :: HandlerFor App Html
 postSearchR = do
   ((result, widget), enctype) <- runFormPost searchForm
-  case result of
-    FormSuccess f -> do
-      let query_string = Types.queryContent f
 
-      either_content <- liftIO
-                      $ manageCachedRemoteContent query_string
-      showResultPage either_content
+  defaultLayout $ do
+    setTitle "Search Result"
+    globalHeader
+    renderSearchForm widget enctype
+    case result of
+      FormSuccess f -> do
+        let query_string = Types.queryContent f
 
-    _ -> defaultLayout [whamlet| Error|]
+        either_content <- liftIO
+                        $ manageCachedRemoteContent query_string
+        showResultPage either_content
+
+      _             -> [whamlet| Error|]
 
 -- Define the main JSON endpoint.
 postSearchJ :: HandlerFor App Value
@@ -97,51 +135,56 @@ postSearchJ = do
 
   returnJson either_content
 
-showResultPage :: Either String Types.RemoteResult -> HandlerFor App Html
+showResultPage :: Either String Types.RemoteResult -> WidgetFor App ()
 showResultPage (Right content) =
-  defaultLayout $ do
-    setTitle "Search Result"
-    globalHeader
-    [whamlet| <div>You searched for '#{query_string}'.</div>|]
-    [whamlet| <br><br>|]
-    [whamlet| <div>|]
-    showResults content
+    [whamlet|<center>^{page_content}</center>|]
   where
-    query_string = T.unpack $ Types.remoteResultOriginalQuery content
-    showResults (Types.RemoteResult _ results image_urls) = do
-      mapM_ (\image_url -> [whamlet| <img src="#{image_url}">|]) image_urls
-      [whamlet|<hr>|]
-      zipWithM_ renderSingleResult [1..] results
-showResultPage _               = defaultLayout [whamlet| Error processing request.|]
+    page_content = do
+      [whamlet|<div>You searched for '#{query_string}'.|]
+      [whamlet|<br><br>|]
+      showResults content
 
--- Render information for a single result from GBIF.
+    query_string = T.unpack
+                 $ Types.remoteResultOriginalQuery content
+
+    showResults (Types.RemoteResult _ results image_urls) = do
+      mapM_ (\image_url -> [whamlet|<img src="#{image_url}">|]) image_urls
+      [whamlet|<hr>|]
+      renderSingleResult 1 $ combineSpeciesInformation results
+
+
+showResultPage _               = [whamlet|Error processing request.|]
+
+-- Render information contained in a single SpeciesInformation.
 renderSingleResult :: Int -> Types.SpeciesInformation -> Widget
 renderSingleResult index information = do
-  [whamlet| <div> Result <b># #{index}</b>|]
+  --[whamlet| <div> Result <b># #{index}</b>|]
+  showCategory "Taxonomy"
   mapM_ (\(t, g) -> showGenusField t (g information)) genusFields
-  [whamlet|<br>|]
-  mapM_ (\(Types.VernacularName t) -> [whamlet| #{t}<br>|])
-    $ Types.speciesInformationVernacularNames information
-  mapM_ (\t -> [whamlet| #{t}|])
-    $ Types.speciesInformationStatuses information
-  [whamlet| <br><hr><br>|]
 
+  [whamlet|<br>|]
+
+  showCategory "Vernacular Names"
+  mapM_ (\(Types.VernacularName t) -> showElement t)
+    $ Types.speciesInformationVernacularNames information
+
+  showCategory "Conservation Status"
+  mapM_ showElement
+    $ Types.speciesInformationStatuses information
+
+  [whamlet|<br><hr><br>|]
   where
-    genusFields :: [(String, Types.SpeciesInformation -> Maybe T.Text)]
-    genusFields =
-      [ ("Kingdom", Types.speciesInformationKingdom)
-      , ("Phylum", Types.speciesInformationPhylum)
-      , ("Order", Types.speciesInformationOrder)
-      , ("Genus", Types.speciesInformationGenus)
-      , ("Family", Types.speciesInformationFamily)
-      ]
+    showElement   :: T.Text -> Widget
+    showElement t  = [whamlet|#{t}<br>|]
+    showCategory  :: T.Text -> Widget
+    showCategory t = [whamlet|<div class="information-category">#{t}|]
 
 showGenusField :: String -> Maybe T.Text -> Widget
 showGenusField name value =
-  [whamlet| <div class='#{name}'>#{name}: #{n}</div>|]
+  [whamlet|<div class='#{name}'>#{name}: #{n}</div>|]
   where
     n = case value of
-      Just v -> v
+      Just v  -> v
       Nothing -> "-"
 
 -- This function renders the main page, which is also the search page.
@@ -150,7 +193,7 @@ showGenusField name value =
 -- 'hamlet' templates are for HTML code.
 -- 'whamlet' temaplates are the same as 'hamlet',
 --   but they can show widgets with #{}
---   and they are already Widgets themselves
+--   and they are Widgets themselves
 getHomeR :: HandlerFor App Html
 getHomeR = do
     (widget, enctype) <- generateFormPost searchForm
@@ -158,17 +201,9 @@ getHomeR = do
       setTitle "Species Searcher."
 
       globalHeader
-      toWidgetHead
-        [hamlet|
-            <meta name=keywords content="species information">
-        |]
-      [whamlet|<form method=post action=@{SearchR} enctype=#{enctype}>
-              ^{widget}
-            <button>Search</button>
-            |]
-
-      [whamlet|This application searches for information about species in the internet.<br>
-               Query for a species name such as 'Felis catus'.|]
+      renderSearchForm widget enctype
+      [whamlet|<center>This application searches for information about species in the internet.<br>
+               Query for a species name such as <i>Felis catus</i>.|]
 
 
 main :: IO ()
