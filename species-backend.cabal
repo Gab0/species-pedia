@@ -41,6 +41,7 @@ executable species-backend
                      , yesod
                      , yesod-form
                      , yesod-core
+                     , yesod-static
                      , species-backend
                      , text
 

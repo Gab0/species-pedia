@@ -16,6 +16,7 @@ import           Data.Maybe
 import           Yesod
 import           Yesod.Form
 import           Yesod.Core.Json
+import           Yesod.Static
 
 import           RemoteResources
 import           Storage
@@ -23,10 +24,13 @@ import qualified Types
 
 -- Define URL Routes.
 data App = App
+ { getStatic :: Static
+ }
 mkYesod "App" [parseRoutes|
 / HomeR GET
 /search SearchR POST
 /search.json SearchJ POST
+/static StaticR Static getStatic
 |]
 
 instance Yesod App
@@ -36,27 +40,15 @@ instance RenderMessage App FormMessage where
 
 globalHeader :: WidgetFor App ()
 globalHeader = do
-    toWidget [lucius|
-                    h1 {
-                      color: green;
-                    }
-                    #title {
-                      margin: auto;
-                      align: center;
-                    }
-                    .search-btn {
-                      background-color: #10a010;
-                      border-color: black;
-                      border-radius: 12px;
-                      padding: 6px;
-                      margin: 10px;
-                    }
-                    .information-category {
-                      font-weight: bold;
-                      margin: 5px;
-                      color: brown;
-                    }
-             |]
+    addStylesheet $ StaticR
+                  $ StaticRoute ["css", "style.css"] []
+
+    -- Load remote react.js libraries.
+    addScriptRemote "https://unpkg.com/react@17/umd/react.development.js"
+    addScriptRemote "https://unpkg.com/react-dom@17/umd/react-dom.development.js"
+    --toWidgetHead [hamlet|<script src=@{StaticR js/widget.js}>|]
+    addScript $ StaticR
+              $ StaticRoute ["js", "widget.js"] []
     [whamlet|
          <div id="title"><center><h1>Species Information Retriever</h1></center></div>
     |]
@@ -65,11 +57,13 @@ globalHeader = do
             <meta name=keywords content="species information">
         |]
 
+
 renderSearchForm :: Widget -> Enctype -> WidgetFor App ()
 renderSearchForm form_widget enctype =
   [whamlet|<div class="search_form"><center><form method=post action=@{SearchR} enctype=#{enctype}>
               ^{form_widget}
             <button class="search-btn">Search</button>
+            <div id="bttt">
     |]
 
 -- Declare the query form.
@@ -214,7 +208,8 @@ main = do
           ++ show port
           ++ "."
           ++ spacer
-  warp port App
+  static@(Static settings) <- static "static/"
+  warp port $ App static
   where
     port = 3000
     spacer = take 4 $ repeat '\n'
