@@ -42,6 +42,7 @@ RemoteResult
     originalQuery Text
     information [SpeciesInformation]
     images [String]
+    wikipedia Text Maybe
     QueryString originalQuery
     deriving Show
 SpeciesInformation
@@ -71,6 +72,7 @@ instance FromJSON RemoteResult where
                       <$> return ""
                       <*> v .: "results"
                       <*> return []
+                      <*> return Nothing
   parseJSON _          =  fail ""
 
 instance FromJSON SpeciesInformation where
@@ -104,7 +106,7 @@ $(deriveToJSON defaultOptions ''RemoteResult)
 -- $(deriveToJSON defaultOptions ''FormResult SpeciesQuery)
 
 -- | Semigroup instance is used to combine two
--- data objects.
+-- SpeciesInformation objects.
 -- FIXME: May improve the organization on this.
 instance Semigroup SpeciesInformation where
    (SpeciesInformation k0 p0 o0 g0 f0 ts0 vn0) <> (SpeciesInformation k1 p1 o1 g1 f1 ts1 vn1) =

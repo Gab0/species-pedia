@@ -18,7 +18,10 @@ import           Yesod.Form
 import           Yesod.Core.Json
 import           Yesod.Static
 
-import           RemoteResources
+import           RemoteResources.GBIF
+import           RemoteResources.Images
+import           RemoteResources.Wikipedia
+
 import           Storage
 import qualified Types
 
@@ -83,19 +86,21 @@ manageCachedRemoteContent query_string = do
   cached_response <- loadFromDatabase query_string
 
   case cached_response of
-    Just response ->  return
-                   $  Right response
-    Nothing       ->  do
-      information <-  decodeInformationGBIF
-                  <$> fetchInformationGBIF (T.unpack query_string)
-      image_urls  <-  parseImageUrls
-                  <$> downloadImages (T.unpack query_string)
-
+    Just response -> return
+                   $ Right response
+    Nothing       -> do
+      information <- decodeInformationGBIF
+                 <$> fetchInformationGBIF (T.unpack query_string)
+      image_urls  <- parseImageUrls
+                 <$> downloadImages (T.unpack query_string)
+      wikipedia   <- (formatParagraph . parseParagraph)
+                 <$> fetchParagraph
+                     (T.unpack query_string)
       case information of
         Left err  -> return $ Left err
-        Right (Types.RemoteResult _ content _) -> do
+        Right (Types.RemoteResult _ content _ _) -> do
           let
-            retrieved_info = Types.RemoteResult query_string content image_urls
+            retrieved_info = Types.RemoteResult query_string content image_urls wikipedia
           db_key <- insertInDatabase retrieved_info
           return  $ Right retrieved_info
 
@@ -141,13 +146,19 @@ showResultPage (Right content) =
     query_string = T.unpack
                  $ Types.remoteResultOriginalQuery content
 
-    showResults (Types.RemoteResult _ results image_urls) = do
+    showResults (Types.RemoteResult _ results image_urls wikipedia) = do
       mapM_ (\image_url -> [whamlet|<img src="#{image_url}">|]) image_urls
-      [whamlet|<hr>|]
+      horizontalLine
+      showParagraph wikipedia
+      horizontalLine
       renderSingleResult 1 $ combineSpeciesInformation results
-
-
 showResultPage _               = [whamlet|Error processing request.|]
+
+showParagraph :: Maybe T.Text -> WidgetFor App ()
+showParagraph (Just content) = [whamlet| #{content}|]
+showParagraph Nothing        = [whamlet| Content not found.|]
+
+horizontalLine = [whamlet|<hr>|]
 
 -- Render information contained in a single SpeciesInformation.
 renderSingleResult :: Int -> Types.SpeciesInformation -> Widget
