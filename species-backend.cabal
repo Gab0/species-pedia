@@ -20,8 +20,13 @@ library
                      , RemoteResources.Wikipedia
                      , Types
                      , Storage
+                     , Frontend
   build-depends:       base >= 4.7 && < 5
                      , text
+                     , yesod
+                     , yesod-form
+                     , yesod-core
+                     , yesod-static
                      , http-conduit
                      , http-types
                      , utf8-string

@@ -1,9 +1,8 @@
-h1 {
-  color: green;
-}
 #title {
   margin: auto;
   align: center;
+  color: green;
+  font-size: 30px;
 }
 .search-btn {
   background-color: #10a010;
@@ -16,4 +15,12 @@ h1 {
   font-weight: bold;
   margin: 5px;
   color: brown;
+}
+
+.centering {
+  justifyContent: "center";
+  alignItems: "center";
+  margin: auto;
+  width: 50%;
+  padding: 10px;
 }

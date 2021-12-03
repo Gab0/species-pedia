@@ -8,16 +8,13 @@ import           Database.Persist.TH
 import qualified Data.Text as T
 import           Types
 
-databaseFilepath = "species-db.sqlite"
--- runDB :: IO ()
--- runDB = runSqlite ":memory:"
-
+databaseFilepath :: T.Text
+databaseFilepath = "species-db.sqlite" -- could be ":memory:"
 
 initializeDatabase :: IO ()
 initializeDatabase =
   runSqlite databaseFilepath $ runMigration migrateAll
 
-  
 loadFromDatabase :: T.Text -> IO (Maybe RemoteResult)
 loadFromDatabase search_query =
   runSqlite databaseFilepath $ do
@@ -26,8 +23,6 @@ loadFromDatabase search_query =
 
     return $  entityVal
           <$> w
-
-
 
 insertInDatabase :: Types.RemoteResult -> IO (Key RemoteResult)
 insertInDatabase n =

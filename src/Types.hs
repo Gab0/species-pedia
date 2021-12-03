@@ -67,6 +67,8 @@ data SpeciesQuery = SpeciesQuery
   }
   deriving Show
 
+$(deriveFromJSON defaultOptions ''SpeciesQuery)
+
 instance FromJSON RemoteResult where
   parseJSON (Object v) =  RemoteResult
                       <$> return ""
