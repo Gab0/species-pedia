@@ -25,5 +25,5 @@ main = do
   static@(Static settings) <- static "static/"
   warp port $ App static
   where
-    port = 3000
+    port = 5000
     spacer = take 4 $ repeat '\n'
