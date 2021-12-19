@@ -22,7 +22,7 @@ import           Data.Text     (Text, intercalate, splitOn)
 import           Data.Aeson
 import           Data.Aeson.TH
 import           Database.Persist
-
+import           Data.Default
 import           Database.Persist.TH
 import           Language.Haskell.TH
 import           Data.Aeson.TypeScript.TH
@@ -44,7 +44,7 @@ import           GHC.Generics (Generic)
 share [mkPersist sqlSettings, mkMigrate "migrateAll"] [persistLowerCase|
 RemoteResult
     originalQuery Text
-    information [SpeciesInformation]
+    information SpeciesInformation
     images [String]
     wikipedia Text Maybe
     QueryString originalQuery
@@ -71,15 +71,14 @@ data SpeciesQuery = SpeciesQuery
   }
   deriving Show
 
+instance Default SpeciesInformation where
+  def = SpeciesInformation Nothing Nothing Nothing Nothing Nothing [] []
 
+newtype GBIFResult = GBIFResult [SpeciesInformation]
 
-instance FromJSON RemoteResult where
-  parseJSON (Object v) =  RemoteResult
-                      <$> return ""
-                      <*> v .: "results"
-                      <*> return []
-                      <*> return Nothing
-  parseJSON _          =  fail ""
+instance FromJSON GBIFResult where
+  parseJSON (Object v) =  GBIFResult
+                      <$> v .: "results"
 
 instance FromJSON SpeciesInformation where
   parseJSON (Object v) =
@@ -91,6 +90,7 @@ instance FromJSON SpeciesInformation where
       <*> v .:? "family"
       <*> v .:? "threatStatuses" .!= []
       <*> v .:? "vernacularNames" .!= []
+    where
   parseJSON _         = fail ""
 
 instance FromJSON VernacularName where
