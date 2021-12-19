@@ -51,6 +51,8 @@ executable species-backend
                      , yesod-static
                      , species-backend
                      , text
+                     , warp
+                     , wai-cors
 
   default-language:    Haskell2010
 
