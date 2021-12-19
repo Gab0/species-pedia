@@ -14,15 +14,19 @@
 {-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE DeriveAnyClass             #-}
 {-# LANGUAGE DeriveGeneric              #-}
+{-# LANGUAGE ScopedTypeVariables        #-}
 
 module Types where
 
-import           Data.Text
+import           Data.Text     (Text, intercalate, splitOn)
 import           Data.Aeson
 import           Data.Aeson.TH
 import           Database.Persist
+
 import           Database.Persist.TH
 import           Language.Haskell.TH
+import           Data.Aeson.TypeScript.TH
+
 import qualified Data.ByteString.Lazy.UTF8 as LUTF8
 import           Generics.Deriving.Semigroup
 import           GHC.Generics (Generic)
@@ -67,7 +71,7 @@ data SpeciesQuery = SpeciesQuery
   }
   deriving Show
 
-$(deriveFromJSON defaultOptions ''SpeciesQuery)
+
 
 instance FromJSON RemoteResult where
   parseJSON (Object v) =  RemoteResult
@@ -100,12 +104,23 @@ instance FromJSON VernacularName where
 -- but those would only come together.
 -- We want to have custom FromJSONs,
 -- to retain some control over remote content parsing.
-$(deriveToJSON defaultOptions ''VernacularName)
-$(deriveToJSON defaultOptions ''SpeciesInformation)
-$(deriveToJSON defaultOptions ''RemoteResult)
+
+$(deriveFromJSON defaultOptions ''SpeciesQuery)
+$(deriveToJSON defaultOptions   ''VernacularName)
+$(deriveToJSON defaultOptions   ''SpeciesInformation)
+$(deriveToJSON defaultOptions   ''RemoteResult)
 
 -- So, not going this way:
 -- $(deriveToJSON defaultOptions ''FormResult SpeciesQuery)
+
+
+-- | TypeScript derivings to generate types descriptors
+-- for the frontend.
+$(deriveTypeScript defaultOptions ''SpeciesQuery)
+$(deriveTypeScript defaultOptions ''VernacularName)
+$(deriveTypeScript defaultOptions ''SpeciesInformation)
+$(deriveTypeScript defaultOptions ''RemoteResult)
+
 
 -- | Semigroup instance is used to combine two
 -- SpeciesInformation objects.

@@ -7,6 +7,7 @@
 
 module Main where
 
+import           System.IO
 
 import           Yesod
 import           Yesod.Static
@@ -14,8 +15,13 @@ import           Yesod.Static
 import           Network.Wai.Middleware.Cors
 import           Network.Wai.Handler.Warp (run)
 
+import           Data.Proxy
+import           Data.Aeson.TypeScript.TH
+
 import           Frontend
 import           Storage
+import           Types
+
 
 allowCors = cors (const $ Just appCorsResourcePolicy)
 
@@ -26,6 +32,20 @@ appCorsResourcePolicy =
         , corsRequestHeaders = ["Authorization", "Content-Type"]
         }
 
+
+generateTSBindings :: String
+generateTSBindings = formatTSDeclarations (
+  (getTypeScriptDeclarations (Proxy :: Proxy VernacularName)) <>
+  (getTypeScriptDeclarations (Proxy :: Proxy SpeciesInformation)) <>
+  (getTypeScriptDeclarations (Proxy :: Proxy RemoteResult))
+  )
+
+writeTSBindings :: IO ()
+writeTSBindings =
+  writeFile "Types.ts" generateTSBindings
+
+-- | Create and launch the application,
+-- and create the TypeScript bindings.
 main :: IO ()
 main = do
   initializeDatabase
@@ -35,7 +55,7 @@ main = do
           ++ "."
           ++ spacer
   static@(Static settings) <- static "static/"
-
+  writeTSBindings
   -- Convert the Yesod website into a WAI Application.
   app     <- toWaiAppPlain $ App static
   run port $ allowCors app
