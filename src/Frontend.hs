@@ -22,24 +22,12 @@ import           RemoteResources.Wikipedia
 
 import           Data.Aeson.Types
 
+import           Foundation
 import           Storage
+import           Game
+
 import qualified Types
 
--- Define URL Routes.
-data App = App
- { getStatic :: Static
- }
-mkYesod "App" [parseRoutes|
-/ HomeR GET                       -- ^ Main home page;
-/react HomeReactR GET             -- ^ React homepage;
-/search SearchR POST              -- ^ Main search results page;
-/search.json SearchJ POST         -- ^ Search results as json;
-/search_react SearchReactR POST   -- ^ Search results as react;
-/static StaticR Static getStatic  -- ^ Static file directory;
-/favicon.ico FaviconR GET         -- ^ Serve the website's icon;
-|]
-
-instance Yesod App
 
 instance RenderMessage App FormMessage where
     renderMessage _ _ = defaultFormMessage

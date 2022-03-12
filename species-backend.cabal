@@ -21,6 +21,8 @@ library
                      , Types
                      , Storage
                      , Frontend
+                     , Foundation
+                     , Game
   build-depends:       base >= 4.7 && < 5
                      , text
                      , yesod

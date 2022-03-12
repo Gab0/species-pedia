@@ -142,3 +142,34 @@ instance Semigroup SpeciesInformation where
           where
             content_list = splitOn separator t0
             separator    = " | "
+
+-- | Parameters that define a game session.
+-- (GAME STEP 1: Client sents this to the server.)
+-- TODO: Most parameter effects are yet to be implemented.
+data NewGameRequest = NewGameRequest
+  { speciesNumber  :: Int
+  , groupNumber    :: Int
+  , speciesGroup   :: Int
+  , gameDifficulty :: Int
+  }
+
+-- | Information required to set a game up.
+-- (GAME STEP 2: Server sends this to the client.)
+data GameSetup = GameSetup
+  { species :: [Text]
+  }
+
+
+-- | How the player organized the species.
+-- (GAME STEP 3: Client sents this to the server.)
+data GameAnswer = GameAnswer
+  { speciesGroups :: [[Text]]
+  }
+
+
+-- | Contains the result of a game.
+-- (GAME STEP 4: Server sends this to the client. Game Over.)
+data GameResult = GameResult
+  { success       :: Bool
+  , correctAnswer :: [[Text]]
+  }
