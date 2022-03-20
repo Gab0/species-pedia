@@ -21,7 +21,7 @@ mkYesodData "App" [parseRoutes|
 /static StaticR Static getStatic        -- ^ Static file directory;
 /favicon.ico FaviconR GET               -- ^ Serve the website's icon;
 
-/game/newspecies AskForSpeciesJ POST    -- ^ Ask for a new species list;
+/game/new AskForSpeciesJ POST           -- ^ Ask for a new species list;
 /game/checkspecies ValidateGroupsJ POST -- ^ Validate species groups as done by some human friend;
 |]
 
