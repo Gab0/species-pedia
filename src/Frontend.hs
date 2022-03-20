@@ -140,10 +140,10 @@ manageCachedRemoteContent query_string = do
                  <$> fetchParagraph
                      (T.unpack query_string)
       case information of
-        Left err  -> return $ Left err
-        Right (Types.RemoteResult _ content _ _) -> do
+        Left err                         -> return $ Left err
+        Right (Types.GBIFResult content) -> do
           let
-            retrieved_info = Types.RemoteResult query_string content image_urls wikipedia
+            retrieved_info = Types.RemoteResult query_string (combineSpeciesInformation content) image_urls wikipedia
           db_key <- insertInDatabase retrieved_info
           return  $ Right retrieved_info
 
@@ -197,7 +197,7 @@ showResultPage (Right content) =
       horizontalLine
       showParagraph wikipedia
       horizontalLine
-      renderSingleResult 1 $ combineSpeciesInformation results
+      renderSingleGBIFResult 1 $ results
 showResultPage _               = [whamlet|Error processing request.|]
 
 showParagraph :: Maybe T.Text -> WidgetFor App ()
@@ -209,8 +209,8 @@ horizontalLine = [whamlet|<hr>|]
 
 
 -- Render information contained in a single SpeciesInformation.
-renderSingleResult :: Int -> Types.SpeciesInformation -> Widget
-renderSingleResult index information = do
+renderSingleGBIFResult :: Int -> Types.SpeciesInformation -> Widget
+renderSingleGBIFResult index information = do
   --[whamlet| <div> Result <b># #{index}</b>|]
   showCategory "Taxonomy"
   mapM_ (\(t, g) -> showGenusField t (g information)) genusFields

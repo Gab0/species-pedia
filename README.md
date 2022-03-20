@@ -7,7 +7,7 @@ As a `stack` project, you can launch the webserver by running `stack run`.
 ## Usage
 
 Once the server is running, data can be accessed through the following ways.
-The default port is `3000`.
+The default port is `5000`.
 
 ### Frontend
 

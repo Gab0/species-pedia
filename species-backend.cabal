@@ -37,6 +37,8 @@ library
                      , tagsoup
                      , template-haskell
                      , generic-deriving
+                     , aeson-typescript
+                     , data-default
 
   default-language:    Haskell2010
 
@@ -51,6 +53,9 @@ executable species-backend
                      , yesod-static
                      , species-backend
                      , text
+                     , warp
+                     , wai-cors
+                     , aeson-typescript
 
   default-language:    Haskell2010
 

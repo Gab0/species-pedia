@@ -14,15 +14,19 @@
 {-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE DeriveAnyClass             #-}
 {-# LANGUAGE DeriveGeneric              #-}
+{-# LANGUAGE ScopedTypeVariables        #-}
 
 module Types where
 
-import           Data.Text
+import           Data.Text     (Text, intercalate, splitOn)
 import           Data.Aeson
 import           Data.Aeson.TH
 import           Database.Persist
+import           Data.Default
 import           Database.Persist.TH
 import           Language.Haskell.TH
+import           Data.Aeson.TypeScript.TH
+
 import qualified Data.ByteString.Lazy.UTF8 as LUTF8
 import           Generics.Deriving.Semigroup
 import           GHC.Generics (Generic)
@@ -40,7 +44,7 @@ import           GHC.Generics (Generic)
 share [mkPersist sqlSettings, mkMigrate "migrateAll"] [persistLowerCase|
 RemoteResult
     originalQuery Text
-    information [SpeciesInformation]
+    information SpeciesInformation
     images [String]
     wikipedia Text Maybe
     QueryString originalQuery
@@ -67,15 +71,14 @@ data SpeciesQuery = SpeciesQuery
   }
   deriving Show
 
-$(deriveFromJSON defaultOptions ''SpeciesQuery)
+instance Default SpeciesInformation where
+  def = SpeciesInformation Nothing Nothing Nothing Nothing Nothing [] []
 
-instance FromJSON RemoteResult where
-  parseJSON (Object v) =  RemoteResult
-                      <$> return ""
-                      <*> v .: "results"
-                      <*> return []
-                      <*> return Nothing
-  parseJSON _          =  fail ""
+newtype GBIFResult = GBIFResult [SpeciesInformation]
+
+instance FromJSON GBIFResult where
+  parseJSON (Object v) =  GBIFResult
+                      <$> v .: "results"
 
 instance FromJSON SpeciesInformation where
   parseJSON (Object v) =
@@ -87,6 +90,7 @@ instance FromJSON SpeciesInformation where
       <*> v .:? "family"
       <*> v .:? "threatStatuses" .!= []
       <*> v .:? "vernacularNames" .!= []
+    where
   parseJSON _         = fail ""
 
 instance FromJSON VernacularName where
@@ -100,12 +104,23 @@ instance FromJSON VernacularName where
 -- but those would only come together.
 -- We want to have custom FromJSONs,
 -- to retain some control over remote content parsing.
-$(deriveToJSON defaultOptions ''VernacularName)
-$(deriveToJSON defaultOptions ''SpeciesInformation)
-$(deriveToJSON defaultOptions ''RemoteResult)
+
+$(deriveFromJSON defaultOptions ''SpeciesQuery)
+$(deriveToJSON defaultOptions   ''VernacularName)
+$(deriveToJSON defaultOptions   ''SpeciesInformation)
+$(deriveToJSON defaultOptions   ''RemoteResult)
 
 -- So, not going this way:
 -- $(deriveToJSON defaultOptions ''FormResult SpeciesQuery)
+
+
+-- | TypeScript derivings to generate types descriptors
+-- for the frontend.
+$(deriveTypeScript defaultOptions ''SpeciesQuery)
+$(deriveTypeScript defaultOptions ''VernacularName)
+$(deriveTypeScript defaultOptions ''SpeciesInformation)
+$(deriveTypeScript defaultOptions ''RemoteResult)
+
 
 -- | Semigroup instance is used to combine two
 -- SpeciesInformation objects.
