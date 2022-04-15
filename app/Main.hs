@@ -18,7 +18,9 @@ import           Network.Wai.Handler.Warp (run)
 import           Data.Proxy
 import           Data.Aeson.TypeScript.TH
 
+import           Foundation
 import           Frontend
+import           Game
 import           Storage
 import           Types
 
@@ -43,6 +45,9 @@ generateTSBindings = formatTSDeclarations (
 writeTSBindings :: IO ()
 writeTSBindings =
   writeFile "Types.ts" generateTSBindings
+
+
+mkYesodDispatch "App" resourcesApp
 
 -- | Create and launch the application,
 -- and create the TypeScript bindings.

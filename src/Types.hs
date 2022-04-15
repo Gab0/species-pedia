@@ -44,10 +44,12 @@ import           GHC.Generics (Generic)
 share [mkPersist sqlSettings, mkMigrate "migrateAll"] [persistLowerCase|
 RemoteResult
     originalQuery Text
+    scientificName Text
     information SpeciesInformation
     images [String]
     wikipedia Text Maybe
-    QueryString originalQuery
+    skeletonState Bool
+    QueryString scientificName
     deriving Show
 SpeciesInformation
     kingdom Text Maybe
@@ -56,6 +58,7 @@ SpeciesInformation
     genus Text Maybe
     family Text Maybe
     statuses [Text]
+    scientificName Text
     vernacularNames [VernacularName]
     deriving Show
     deriving Eq
@@ -72,13 +75,34 @@ data SpeciesQuery = SpeciesQuery
   deriving Show
 
 instance Default SpeciesInformation where
-  def = SpeciesInformation Nothing Nothing Nothing Nothing Nothing [] []
+  def = SpeciesInformation Nothing Nothing Nothing Nothing Nothing [] "" []
 
-newtype GBIFResult = GBIFResult [SpeciesInformation]
+instance Default RemoteResult where
+  def = RemoteResult "" "" def [] Nothing True
 
-instance FromJSON GBIFResult where
-  parseJSON (Object v) =  GBIFResult
+
+-- | Stores relevant information from a direct fetch from GBIF.
+-- These are retrieved by using numerical ID.
+-- FIXME: Deprecated?
+data GBIFFetchResult = GBIFFetchResult
+  { fetchRank           :: Text
+  , fetchScientificName :: Text
+  }
+  deriving (Show, Eq)
+
+instance FromJSON GBIFFetchResult where
+  parseJSON (Object v) = GBIFFetchResult
+                      <$> v .: "rank"
+                      <*> v .: "scientificName"
+
+-- | Stores a species search result from GBIF.
+newtype GBIFSearchResult = GBIFSearchResult [SpeciesInformation]
+  deriving (Show, Eq)
+
+instance FromJSON GBIFSearchResult where
+  parseJSON (Object v) =  GBIFSearchResult
                       <$> v .: "results"
+  parseJSON _          = fail ""
 
 instance FromJSON SpeciesInformation where
   parseJSON (Object v) =
@@ -89,8 +113,8 @@ instance FromJSON SpeciesInformation where
       <*> v .:? "genus"
       <*> v .:? "family"
       <*> v .:? "threatStatuses" .!= []
+      <*> v .:  "scientificName"
       <*> v .:? "vernacularNames" .!= []
-    where
   parseJSON _         = fail ""
 
 instance FromJSON VernacularName where
@@ -126,8 +150,8 @@ $(deriveTypeScript defaultOptions ''RemoteResult)
 -- SpeciesInformation objects.
 -- FIXME: May improve the organization on this.
 instance Semigroup SpeciesInformation where
-   (SpeciesInformation k0 p0 o0 g0 f0 ts0 vn0) <> (SpeciesInformation k1 p1 o1 g1 f1 ts1 vn1) =
-     SpeciesInformation (maybeText k0 k1) (maybeText p0 p1) (maybeText o0 o1) (maybeText g0 g1) (maybeText f0 f1) (ts0 <> ts1) (vn0 <> vn1)
+   (SpeciesInformation k0 p0 o0 g0 f0 ts0 sn0 vn0) <> (SpeciesInformation k1 p1 o1 g1 f1 ts1 sn1 vn1) =
+     SpeciesInformation (maybeText k0 k1) (maybeText p0 p1) (maybeText o0 o1) (maybeText g0 g1) (maybeText f0 f1) (ts0 <> ts1) sn0 (vn0 <> vn1)
     where
       maybeText (Just a0) (Just a1) = Just
                                     $ manageVariations a0 a1
@@ -142,3 +166,46 @@ instance Semigroup SpeciesInformation where
           where
             content_list = splitOn separator t0
             separator    = " | "
+
+-- | Parameters that define a game session.
+-- (GAME STEP 1: Client sents this to the server.)
+-- TODO: Most parameter effects are yet to be implemented.
+data NewGameRequest = NewGameRequest
+  { speciesNumber  :: Int
+  , groupNumber    :: Int
+  , speciesGroup   :: Int
+  , gameDifficulty :: Int
+  }
+
+$(deriveFromJSON defaultOptions ''NewGameRequest)
+
+-- | Information required to set a game up.
+-- (GAME STEP 2: Server sends this to the client.)
+data GameSetup = GameSetup
+  { species :: [RemoteResult]
+  , textTip :: Text
+  }
+
+$(deriveToJSON defaultOptions ''GameSetup)
+
+-- | How the player organized the species.
+-- (GAME STEP 3: Client sents this to the server.)
+data GameAnswer = GameAnswer
+  { speciesGroups :: [[Text]]
+  }
+
+$(deriveFromJSON defaultOptions ''GameAnswer)
+
+-- | Contains the result of a game.
+-- (GAME STEP 4: Server sends this to the client: Game Over.)
+data GameResult = GameResult
+  { success       :: Bool
+  , correctAnswer :: [[Text]]
+  }
+
+$(deriveToJSON defaultOptions ''GameResult)
+
+$(deriveTypeScript defaultOptions ''NewGameRequest)
+$(deriveTypeScript defaultOptions ''GameSetup)
+$(deriveTypeScript defaultOptions ''GameAnswer)
+$(deriveTypeScript defaultOptions ''GameResult)

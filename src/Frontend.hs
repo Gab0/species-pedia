@@ -8,7 +8,6 @@
 module Frontend where
 
 import qualified Data.Text as T
-import           Data.Maybe
 import           Data.List
 
 import           Yesod
@@ -17,29 +16,12 @@ import           Yesod.Core.Json
 import           Yesod.Static
 
 import           RemoteResources.GBIF
-import           RemoteResources.Images
-import           RemoteResources.Wikipedia
+import           RemoteResources.Management
 
-import           Data.Aeson.Types
+import           Foundation
 
-import           Storage
 import qualified Types
 
--- Define URL Routes.
-data App = App
- { getStatic :: Static
- }
-mkYesod "App" [parseRoutes|
-/ HomeR GET                       -- ^ Main home page;
-/react HomeReactR GET             -- ^ React homepage;
-/search SearchR POST              -- ^ Main search results page;
-/search.json SearchJ POST         -- ^ Search results as json;
-/search_react SearchReactR POST   -- ^ Search results as react;
-/static StaticR Static getStatic  -- ^ Static file directory;
-/favicon.ico FaviconR GET         -- ^ Serve the website's icon;
-|]
-
-instance Yesod App
 
 instance RenderMessage App FormMessage where
     renderMessage _ _ = defaultFormMessage
@@ -121,33 +103,6 @@ searchForm =  renderDivs
           <$> areq textField "Search Query " Nothing
           <*> areq hiddenField "" (Just False)
 
--- | Manage remote content retrieval and the cache routines.
---   Fetch, insert to DB or retrieve from DB depending on
---   DB data availability.
-manageCachedRemoteContent :: T.Text -> IO (Either String Types.RemoteResult)
-manageCachedRemoteContent query_string = do
-  cached_response <- loadFromDatabase query_string
-
-  case cached_response of
-    Just response -> return
-                   $ Right response
-    Nothing       -> do
-      information <- decodeInformationGBIF
-                 <$> fetchInformationGBIF (T.unpack query_string)
-      image_urls  <- parseImageUrls
-                 <$> downloadImages (T.unpack query_string)
-      wikipedia   <- (formatParagraph . parseParagraph)
-                 <$> fetchParagraph
-                     (T.unpack query_string)
-      case information of
-        Left err                         -> return $ Left err
-        Right (Types.GBIFResult content) -> do
-          let
-            retrieved_info = Types.RemoteResult query_string (combineSpeciesInformation content) image_urls wikipedia
-          db_key <- insertInDatabase retrieved_info
-          return  $ Right retrieved_info
-
-
 -- Render the page that shows query results
 postSearchR :: HandlerFor App Html
 postSearchR = do
@@ -192,12 +147,12 @@ showResultPage (Right content) =
     query_string = T.unpack
                  $ Types.remoteResultOriginalQuery content
 
-    showResults (Types.RemoteResult _ results image_urls wikipedia) = do
+    showResults (Types.RemoteResult _ _ results image_urls wikipedia _) = do
       mapM_ (\image_url -> [whamlet|<img src="#{image_url}">|]) image_urls
       horizontalLine
       showParagraph wikipedia
       horizontalLine
-      renderSingleGBIFResult 1 $ results
+      renderSingleGBIFResult 1 results
 showResultPage _               = [whamlet|Error processing request.|]
 
 showParagraph :: Maybe T.Text -> WidgetFor App ()

@@ -1,30 +1,59 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 module RemoteResources.GBIF where
-import           Data.Default
+
+import           System.IO
+import           System.Random
+
 import           Network.HTTP.Conduit
+import           Network.HTTP.Types.Status
+
 import           Network.HTTP.Types.URI
+
+import           Data.Default
 import qualified Data.Text as T
 import qualified Data.ByteString.UTF8 as UTF8
 import qualified Data.ByteString.Lazy.UTF8 as LUTF8
+
+
 import           Data.Aeson
+
 import           Types
 
--- Fetch information on a single species from GBIF.
+
+-- | Base URL for the species resource in the GBIF's API.
+baseUrlGBIF :: String
+baseUrlGBIF ="https://api.gbif.org/v1/species/"
+
+-- | Fetch information on a single species from GBIF.
 fetchInformationGBIF :: String -> IO LUTF8.ByteString
 fetchInformationGBIF query =
   simpleHttp $ base_url ++ query_string
   where
-    base_url = "https://api.gbif.org/v1/species/search"
+    base_url = baseUrlGBIF ++ "search"
     query_string = UTF8.toString
                  $ renderQuery True
                  [ ("q", Just $ UTF8.fromString query)
-                 --, ("nameType", Just "INFORMAL")
                  ]
 
--- Decode GBIF response JSON according to our custom types
+-- | Select a random ID from the ID list and try to fetch it from GBIF.
+fetchRandomSpecies :: [String] -> IO (Maybe LUTF8.ByteString)
+fetchRandomSpecies all_id_list = do
+  species_id <-  (!!) all_id_list
+             <$> (randomRIO (0, length all_id_list -1) :: IO Int)
+  request  <- parseRequest $ baseUrlGBIF ++ species_id
+  manager  <- newManager tlsManagerSettings
+  response <- httpLbs request manager
+
+  return $ case responseStatus response of
+    (Status 200 _) -> Just $ responseBody response
+    _              -> Nothing
+
+
+
+-- | Decode GBIF response JSON according to our custom types
 -- and their FromJSON instances.
-decodeInformationGBIF :: LUTF8.ByteString -> Either String GBIFResult
+decodeInformationGBIF :: LUTF8.ByteString -> Either String GBIFSearchResult
 decodeInformationGBIF = eitherDecode
 
 fetchObservationMapGBIF :: IO UTF8.ByteString
@@ -67,3 +96,9 @@ combineSpeciesInformation sp_info =
   where
     combine :: Types.SpeciesInformation -> Types.SpeciesInformation -> Types.SpeciesInformation
     combine a b = a <> b
+
+-- | Read the ID list from a file containing GBIF species IDs.
+readIDList :: IO [String]
+readIDList =  lines
+          <$> (openFile "gbif_ids.txt" ReadMode
+          >>= hGetContents)
