@@ -15,14 +15,25 @@ import qualified Data.ByteString.Lazy.UTF8 as LUTF8
 biolibHost :: String
 biolibHost = "https://www.biolib.cz"
 
+-- | Top level function to retrieve species images.
+retrieveImages :: String -> IO [String]
+retrieveImages species_name = do
+  image_page <- downloadImages species_name
+
+  result_page <-
+      case checkDisambiguationPage image_page of
+          True  -> skipDisambiguationPage image_page
+          False -> return image_page
+
+  return $ parseImageUrls result_page
+
 -- | Locate relevant image urls in the raw HTML text
 -- of the search page @biolib.cz.
-parseImageUrls :: LUTF8.ByteString -> [String]
+parseImageUrls :: String -> [String]
 parseImageUrls = map (biolibHost ++)
                . filterImageUrls
                . concatMap locateImageTags
                . parseTags
-               . LUTF8.toString
   where
     -- Discard images that are not species.
     -- i.e. Website logos, etc.
@@ -44,10 +55,33 @@ parseImageUrls = map (biolibHost ++)
     locateImageSrcInAttributes ("src", src) = [src]
     locateImageSrcInAttributes _            = []
 
+-- | Sometimes a search will lead to a 'disambiguation' page,
+-- check if we're there.
+checkDisambiguationPage :: String -> Bool
+checkDisambiguationPage content =
+  "New search" `isInfixOf` content
 
-downloadImages :: String -> IO LUTF8.ByteString
-downloadImages query =
-  simpleHttp $ base_url ++ query_string
+-- | Locate the link that leads to the top result in a disambiguation page.
+-- Then fetch it's contents.
+skipDisambiguationPage :: String -> IO String
+skipDisambiguationPage content =  LUTF8.toString
+                              <$> simpleHttp (biolibHost ++ url)
+  where
+    url = head $ mapMaybe checkDisambiguationTag tags
+    tags = parseTags content
+    checkDisambiguationTag :: Tag String -> Maybe String
+    checkDisambiguationTag (TagOpen "a" href) =
+      case href of
+        [("href", k)] -> if "searchrecords" `isInfixOf` k then Just k else Nothing
+        _             -> Nothing
+    checkDisambiguationTag _                  = Nothing
+
+
+-- | Retrieve the webpage that contains image results.
+downloadImages :: String -> IO String
+downloadImages query =  LUTF8.toString
+                    <$> simpleHttp (base_url ++ query_string)
+
   where
     base_url = biolibHost ++ "/en/formsearch/"
     query_string = UTF8.toString
