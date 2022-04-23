@@ -7,25 +7,28 @@ import qualified Data.Text as T
 import           Data.Either
 import           Data.Maybe
 import           Data.Aeson
+import qualified Data.ByteString.Lazy.UTF8 as LUTF8
 
-import RemoteResources.GBIF
-import RemoteResources.Images
-import RemoteResources.Wikipedia
+import           RemoteResources.GBIF
+import           RemoteResources.Images
+import           RemoteResources.Wikipedia
 
 import Storage
 import Types
 
 -- | Manage remote content retrieval and the cache routines.
---   Fetch, insert to DB or retrieve from DB depending on
---   DB data availability.
+-- Fetch, insert to DB or retrieve from DB depending on
+-- DB data availability.
 manageCachedRemoteContent :: T.Text -> IO (Either String Types.RemoteResult)
 manageCachedRemoteContent query_string = do
-  cached_response <- loadFromDatabase query_string
+  cached_response <- loadFromDatabase $ sanitizeSpeciesName query_string
 
   case cached_response of
-    Just response -> return
-                   $ Right response
+    Just response -> do
+      putStrLn "Retrieving from database."
+      return $ Right response
     Nothing       -> do
+      putStrLn "Retrieving from the internet..."
       information <- decodeInformationGBIF
                  <$> fetchInformationGBIF (T.unpack query_string)
       case information of
@@ -34,7 +37,6 @@ manageCachedRemoteContent query_string = do
           new_record <- constructFullRecord species_information
           insertInDatabase new_record
           return      $ Right new_record
-
 
 -- | Given a list of database records, upgrade the ones that are skeletons,
 -- update the database accordingly and return all records involved, in full state.
@@ -58,7 +60,7 @@ fetchRandomSpeciesBatch num = do
                $ replicate num
                $ fetchRandomSpecies id_list
 
-  let fetched_records = map eitherDecode
+  let fetched_records = map (eitherDecode . LUTF8.fromString)
                       $ catMaybes contentGBIF
 
   print fetched_records
@@ -67,16 +69,17 @@ fetchRandomSpeciesBatch num = do
 
 -- | Converts a skeleton record into a full record.
 upgradeRecord :: Types.RemoteResult -> IO Types.RemoteResult
-upgradeRecord rr
-  | remoteResultSkeletonState rr = constructFullRecord [remoteResultInformation rr]
-  | otherwise                    = return rr
+upgradeRecord record
+  | remoteResultSkeletonState record = constructFullRecord [remoteResultInformation record]
+  | otherwise                        = return record
 
 -- | Construct a skeleton record from a GBIF result.
 -- Skeleton records contain basically only the GBIF result.
 constructSkeletonRecord :: Types.SpeciesInformation -> Types.RemoteResult
 constructSkeletonRecord species_information =
   def
-    { Types.remoteResultScientificName = speciesInformationScientificName species_information
+    { Types.remoteResultScientificName = sanitizeSpeciesName
+                                       $ speciesInformationScientificName species_information
     , Types.remoteResultInformation    = species_information
     }
 
@@ -84,14 +87,11 @@ constructSkeletonRecord species_information =
 -- by retrieving missing information from additional sources.
 constructFullRecord :: [Types.SpeciesInformation] -> IO Types.RemoteResult
 constructFullRecord species_information = do
-  let species_name =  Types.speciesInformationScientificName
+  let species_name =  sanitizeSpeciesName
+                   $  Types.speciesInformationScientificName
                    $  head species_information
-  image_urls      <-  parseImageUrls
-                  <$> downloadImages (T.unpack species_name)
-  wikipedia       <- formatParagraph . parseParagraph
-                  <$> fetchParagraph
-                     (T.unpack species_name)
-
+  image_urls      <-  retrieveImages    $ T.unpack species_name
+  wikipedia       <-  retrieveWikipedia $ T.unpack species_name
   return $ Types.RemoteResult
     { Types.remoteResultOriginalQuery  = species_name -- FIXME: Maybe this field should be deprecated.
     , Types.remoteResultScientificName = species_name
@@ -100,3 +100,16 @@ constructFullRecord species_information = do
     , Types.remoteResultWikipedia      = wikipedia
     , Types.remoteResultSkeletonState  = False
     }
+
+-- | Some species names comes with all sorts of
+-- strange tokens attached from GBIF,
+-- such as year of discovery and/or discovery author names.
+sanitizeSpeciesName :: T.Text -> T.Text
+sanitizeSpeciesName name = takeScientificName
+                         $ T.strip
+                         $ T.toLower
+                         $ foldl process name tokens
+  where
+    process str token    = head $ T.splitOn (T.singleton token) str
+    tokens               = ",(" :: [Char]
+    takeScientificName t = T.unwords $ take 2 $ T.words t

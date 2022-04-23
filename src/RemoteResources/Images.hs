@@ -12,11 +12,13 @@ import           Network.HTTP.Types.URI
 import qualified Data.ByteString.UTF8 as UTF8
 import qualified Data.ByteString.Lazy.UTF8 as LUTF8
 
+import Types
+
 biolibHost :: String
 biolibHost = "https://www.biolib.cz"
 
 -- | Top level function to retrieve species images.
-retrieveImages :: String -> IO [String]
+retrieveImages :: String -> IO (RemoteContent [String])
 retrieveImages species_name = do
   image_page <- downloadImages species_name
 
@@ -25,7 +27,10 @@ retrieveImages species_name = do
           True  -> skipDisambiguationPage image_page
           False -> return image_page
 
-  return $ parseImageUrls result_page
+  return $
+    case parseImageUrls result_page of
+      [] -> NotAvailable
+      r  -> Retrieved r
 
 -- | Locate relevant image urls in the raw HTML text
 -- of the search page @biolib.cz.

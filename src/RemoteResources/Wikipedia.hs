@@ -1,12 +1,26 @@
 module RemoteResources.Wikipedia where
 
-import Control.Monad (mfilter)
+import           Control.Monad (mfilter)
 import qualified Data.Text as T
 import           Data.Maybe
-import           Network.HTTP.Conduit
-import qualified Data.ByteString.Lazy.UTF8 as LUTF8
 
 import           Text.HTML.TagSoup
+
+import           RemoteResources.Core
+
+import           Types
+
+-- | Top level function to retriee wikipedia information.
+retrieveWikipedia :: String -> IO (RemoteContent T.Text)
+retrieveWikipedia species_name = do
+  from_remote <- fetchParagraph species_name
+  return $ case from_remote of
+    Just res ->
+      case (formatParagraph .  parseParagraph) res of
+        Just r  -> Retrieved r
+        Nothing -> NotAvailable
+    Nothing  -> NotAvailable
+
 
 replace :: Char -> Char -> String -> String
 replace a b = map
@@ -18,11 +32,10 @@ formatParagraph t  = Just
                    $ T.pack
                    $ unlines t
 
-fetchParagraph :: String -> IO String
+fetchParagraph :: String -> IO (Maybe String)
 fetchParagraph identifier =
-   LUTF8.toString
-   <$> simpleHttp (buildWikipediaUrl identifier)
-   >>= return
+   makeGetRequest $ buildWikipediaUrl identifier
+
 
 buildWikipediaUrl :: String -> String
 buildWikipediaUrl = (++) base_url . formatIdentifier
