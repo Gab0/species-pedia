@@ -18,14 +18,18 @@
 
 module Types where
 
-import           Data.Text     (Text, intercalate, splitOn)
+import           Data.Text    (Text)
+import qualified Data.Text as T
 import           Data.Aeson
 import           Data.Aeson.TH
 import           Database.Persist
 import           Data.Default
 import           Database.Persist.TH
-import           Language.Haskell.TH
 import           Data.Aeson.TypeScript.TH
+import Database.Persist.Sql
+
+import           Language.Haskell.TH
+import           Text.Read
 
 import qualified Data.ByteString.Lazy.UTF8 as LUTF8
 import           Generics.Deriving.Semigroup
@@ -46,8 +50,8 @@ RemoteResult
     originalQuery Text
     scientificName Text
     information SpeciesInformation
-    images [String]
-    wikipedia Text Maybe
+    images (RemoteContent [String])
+    wikipedia (RemoteContent Text)
     skeletonState Bool
     QueryString scientificName
     deriving Show
@@ -78,15 +82,33 @@ instance Default SpeciesInformation where
   def = SpeciesInformation Nothing Nothing Nothing Nothing Nothing [] "" []
 
 instance Default RemoteResult where
-  def = RemoteResult "" "" def [] Nothing True
+  def = RemoteResult "" "" def NeverTried NeverTried True
 
+
+-- | Encapsulates retrievable remote content to avoid querying
+-- unavailable content more than once.
+data RemoteContent a = Retrieved a
+                     | NotAvailable
+                     | NeverTried
+  deriving (Show, Read)
+
+instance (Show a, Read a) => PersistField (RemoteContent a) where
+    toPersistValue = toPersistValue . show
+    fromPersistValue (PersistText pv) =
+        case readMaybe $ T.unpack pv of
+            Just w -> Right w
+            _      -> Left $ T.pack $ "Unable to parse RemoteContent: <" <> show pv <> ">"
+    fromPersistValue _                = Left "Weird RemoteContent result."
+
+instance (Show a, Read a) => PersistFieldSql (RemoteContent a) where
+    sqlType _ = SqlString
 
 -- | Stores relevant information from a direct fetch from GBIF.
 -- These are retrieved by using numerical ID.
 -- FIXME: Deprecated?
 data GBIFFetchResult = GBIFFetchResult
-  { fetchRank           :: Text
-  , fetchScientificName :: Text
+  { fetchRank           :: T.Text
+  , fetchScientificName :: T.Text
   }
   deriving (Show, Eq)
 
@@ -94,6 +116,7 @@ instance FromJSON GBIFFetchResult where
   parseJSON (Object v) = GBIFFetchResult
                       <$> v .: "rank"
                       <*> v .: "scientificName"
+  parseJSON _          = fail "Invalid GBIF result."
 
 -- | Stores a species search result from GBIF.
 newtype GBIFSearchResult = GBIFSearchResult [SpeciesInformation]
@@ -133,6 +156,7 @@ $(deriveFromJSON defaultOptions ''SpeciesQuery)
 $(deriveToJSON defaultOptions   ''VernacularName)
 $(deriveToJSON defaultOptions   ''SpeciesInformation)
 $(deriveToJSON defaultOptions   ''RemoteResult)
+$(deriveToJSON defaultOptions   ''RemoteContent)
 
 -- So, not going this way:
 -- $(deriveToJSON defaultOptions ''FormResult SpeciesQuery)
@@ -144,6 +168,7 @@ $(deriveTypeScript defaultOptions ''SpeciesQuery)
 $(deriveTypeScript defaultOptions ''VernacularName)
 $(deriveTypeScript defaultOptions ''SpeciesInformation)
 $(deriveTypeScript defaultOptions ''RemoteResult)
+$(deriveTypeScript defaultOptions ''RemoteContent)
 
 
 -- | Semigroup instance is used to combine two
@@ -154,17 +179,17 @@ instance Semigroup SpeciesInformation where
      SpeciesInformation (maybeText k0 k1) (maybeText p0 p1) (maybeText o0 o1) (maybeText g0 g1) (maybeText f0 f1) (ts0 <> ts1) sn0 (vn0 <> vn1)
     where
       maybeText (Just a0) (Just a1) = Just
-                                    $ manageVariations a0 a1
+                                    $ combineVariations a0 a1
       maybeText a b                 = a <> b
 
-      manageVariations :: Text -> Text -> Text
-      manageVariations t0 t1
+      combineVariations :: Text -> Text -> Text
+      combineVariations t0 t1
         | t0 == t1  = t0
         | otherwise = case t1 `elem` content_list of
             True  -> t0
-            False -> intercalate separator $ t1 : content_list
+            False -> T.intercalate separator $ t1 : content_list
           where
-            content_list = splitOn separator t0
+            content_list = T.splitOn separator t0
             separator    = " | "
 
 -- | Parameters that define a game session.

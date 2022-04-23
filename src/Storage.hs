@@ -56,9 +56,11 @@ retrieveGroupFromDatabase =
 -- | Retrieve n randomly-selected `RemoteResult` elements.
 draftFromDatabase :: Int -> IO [RemoteResult]
 draftFromDatabase num = do
-  records  <- retrieveGroupFromDatabase
-  sequence  $ replicate num (choice records)
+  records   <- retrieveGroupFromDatabase
+  retrieved <- sequence $ replicate num (choice records)
+  return     $ catMaybes retrieved
 
 -- | Select a random element from a list.
-choice :: [a] -> IO a
-choice r = (!!) r <$> randomRIO (0, length r - 1)
+choice :: [a] -> IO (Maybe a)
+choice [] = return Nothing
+choice r  = Just . (!!) r <$> randomRIO (0, length r - 1)

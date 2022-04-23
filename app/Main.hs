@@ -24,7 +24,8 @@ import           Game
 import           Storage
 import           Types
 
-
+-- Is it worth adding wai-3.2.3 to the project just for this type signature?
+--allowCors :: Middleware
 allowCors = cors (const $ Just appCorsResourcePolicy)
 
 appCorsResourcePolicy :: CorsResourcePolicy

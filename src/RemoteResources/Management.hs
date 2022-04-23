@@ -1,6 +1,10 @@
-{-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards   #-}
+{-# LANGUAGE LambdaCase        #-}
 
 module RemoteResources.Management where
+
+import           Control.Monad
 
 import           Data.Default
 import qualified Data.Text as T
@@ -49,6 +53,17 @@ upgradeRecordsIfRequired rr = do
     full_records = filter ((== False) . remoteResultSkeletonState) rr
     skel_records = filter remoteResultSkeletonState                rr
 
+-- upgradeRecord' :: Types.RemoteResult -> [Types.RemoteResult]
+-- upgradeRecord' Types.RemoteResult {..} = do
+--   when (contentMissing remoteResultImages) $ do
+--     return []
+
+-- | Define which variants of `RemoteContent` still needs to be fetched.
+contentMissing :: RemoteContent a -> Bool
+contentMissing = \case
+  (Retrieved _) -> False
+  NotAvailable  -> False
+  NeverTried    -> True
 
 -- | Fetch data for multiple species from GBIF, as skeleton records.
 fetchRandomSpeciesBatch :: Int -> IO [Types.RemoteResult]
