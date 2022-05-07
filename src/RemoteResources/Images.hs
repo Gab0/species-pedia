@@ -20,12 +20,16 @@ biolibHost = "https://www.biolib.cz"
 -- | Top level function to retrieve species images.
 retrieveImages :: String -> IO (RemoteContent [String])
 retrieveImages species_name = do
-  image_page <- downloadImages species_name
+  result_page <- downloadImages species_name
 
-  result_page <-
-      case checkDisambiguationPage image_page of
-          True  -> skipDisambiguationPage image_page
-          False -> return image_page
+  -- FIXME: It seems this is not really required.
+  -- result_page <-
+  --     case checkDisambiguationPage image_page of
+  --         True  -> do
+  --           putStrLn image_page
+  --           putStrLn "At disambiguation page..."
+  --           skipDisambiguationPage image_page
+  --         False -> return image_page
 
   return $
     case parseImageUrls result_page of
@@ -62,17 +66,22 @@ parseImageUrls = map (biolibHost ++)
 
 -- | Sometimes a search will lead to a 'disambiguation' page,
 -- check if we're there.
+-- FIXME: Most likely DEPRECATED.
 checkDisambiguationPage :: String -> Bool
 checkDisambiguationPage content =
   "New search" `isInfixOf` content
 
 -- | Locate the link that leads to the top result in a disambiguation page.
 -- Then fetch it's contents.
+-- FIXME: Most likely DEPRECATED.
 skipDisambiguationPage :: String -> IO String
-skipDisambiguationPage content =  LUTF8.toString
-                              <$> simpleHttp (biolibHost ++ url)
+skipDisambiguationPage content =
+  case disambiguation_urls of
+    url:_ -> LUTF8.toString
+          <$> simpleHttp (biolibHost ++ url)
+    _     -> return ""
   where
-    url = head $ mapMaybe checkDisambiguationTag tags
+    disambiguation_urls = mapMaybe checkDisambiguationTag tags
     tags = parseTags content
     checkDisambiguationTag :: Tag String -> Maybe String
     checkDisambiguationTag (TagOpen "a" href) =

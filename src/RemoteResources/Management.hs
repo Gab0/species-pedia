@@ -4,8 +4,6 @@
 
 module RemoteResources.Management where
 
-import           Control.Monad
-
 import           Data.Default
 import qualified Data.Text as T
 import           Data.Either
@@ -46,20 +44,20 @@ manageCachedRemoteContent query_string = do
 -- update the database accordingly and return all records involved, in full state.
 upgradeRecordsIfRequired :: [Types.RemoteResult] -> IO [Types.RemoteResult]
 upgradeRecordsIfRequired rr = do
-  upgraded_records <- mapM upgradeRecord skel_records
+  upgraded_records <- mapM (upgradeRecord (True, True)) rr
   insertInDatabaseBatch upgraded_records
   return $ full_records ++ upgraded_records
   where
     full_records = filter ((== False) . remoteResultSkeletonState) rr
-    skel_records = filter remoteResultSkeletonState                rr
+
 
 -- upgradeRecord' :: Types.RemoteResult -> [Types.RemoteResult]
 -- upgradeRecord' Types.RemoteResult {..} = do
 --   when (contentMissing remoteResultImages) $ do
 --     return []
 
--- | Define which variants of `RemoteContent` still needs to be fetched.
-contentMissing :: RemoteContent a -> Bool
+-- | Define when the contents of a `RemoteContent` data type still needs to be fetched.
+contentMissing :: (RemoteContent a) -> Bool
 contentMissing = \case
   (Retrieved _) -> False
   NotAvailable  -> False
@@ -83,38 +81,45 @@ fetchRandomSpeciesBatch num = do
          $ rights fetched_records
 
 -- | Converts a skeleton record into a full record.
-upgradeRecord :: Types.RemoteResult -> IO Types.RemoteResult
-upgradeRecord record
-  | remoteResultSkeletonState record = constructFullRecord [remoteResultInformation record]
-  | otherwise                        = return record
+-- FIXME: Maybe rewrite everything here properly, with classes and lenses?
+-- Once everything works, I guess.
+upgradeRecord :: (Bool, Bool) -> Types.RemoteResult -> IO Types.RemoteResult
+upgradeRecord (img, wiki) record = do
+  record1 <- case img == True && contentMissing (remoteResultImages record) of
+        True -> do
+          images <- retrieveImages scientific_name
+          return  $ record { remoteResultImages = images }
+        False -> return record
+
+  case wiki == True && contentMissing (remoteResultWikipedia record) of
+        True -> do
+          wiki_content  <- retrieveWikipedia scientific_name
+          return $ record1 { remoteResultWikipedia = wiki_content }
+        False -> return record1
+
+  where
+    scientific_name = T.unpack $ Types.remoteResultScientificName record
 
 -- | Construct a skeleton record from a GBIF result.
 -- Skeleton records contain basically only the GBIF result.
 constructSkeletonRecord :: Types.SpeciesInformation -> Types.RemoteResult
 constructSkeletonRecord species_information =
   def
-    { Types.remoteResultScientificName = sanitizeSpeciesName
-                                       $ speciesInformationScientificName species_information
+    { Types.remoteResultOriginalQuery  = species_name -- FIXME: Maybe this field should be deprecated.
+    , Types.remoteResultScientificName = species_name
     , Types.remoteResultInformation    = species_information
     }
+  where
+    species_name = sanitizeSpeciesName
+                 $ speciesInformationScientificName species_information
 
 -- | Construct a full record based on a GBIF result,
 -- by retrieving missing information from additional sources.
 constructFullRecord :: [Types.SpeciesInformation] -> IO Types.RemoteResult
-constructFullRecord species_information = do
-  let species_name =  sanitizeSpeciesName
-                   $  Types.speciesInformationScientificName
-                   $  head species_information
-  image_urls      <-  retrieveImages    $ T.unpack species_name
-  wikipedia       <-  retrieveWikipedia $ T.unpack species_name
-  return $ Types.RemoteResult
-    { Types.remoteResultOriginalQuery  = species_name -- FIXME: Maybe this field should be deprecated.
-    , Types.remoteResultScientificName = species_name
-    , Types.remoteResultInformation    = combineSpeciesInformation species_information
-    , Types.remoteResultImages         = image_urls
-    , Types.remoteResultWikipedia      = wikipedia
-    , Types.remoteResultSkeletonState  = False
-    }
+constructFullRecord species_information = upgradeRecord (True, True)
+                                        $ constructSkeletonRecord
+                                        $ combineSpeciesInformation species_information
+
 
 -- | Some species names comes with all sorts of
 -- strange tokens attached from GBIF,

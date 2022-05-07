@@ -57,7 +57,7 @@ getSpeciesGroup fetch_remote = do
 
   putStrLn $ "First round group selection: " <> show substantial_groups
   case substantial_groups of
-    []   -> retry
+    []   -> retry []
     xs   -> do
       --img_groups <- mapM filterSpeciesWithImages xs
       mapM_ (print . length) xs
@@ -65,18 +65,18 @@ getSpeciesGroup fetch_remote = do
       selected_group <- choice $ filter isValidGroup xs
       case selected_group of
         Just g  -> do
-          selected_group_img <- filterSpeciesWithImages $ take 8 g
+          selected_group_img <- filterSpeciesWithImages $ take 16 g
           putStrLn $ "Group with " <> show (length selected_group_img) <> " images."
           case isValidGroup selected_group_img of
             True  -> return g
-            False -> retry
-        Nothing -> retry
+            False -> retry g
+        Nothing -> retry []
   where
     number         = 100
     isValidGroup g = length g >= 5
-    retry          =
+    retry g        =
       case fetch_remote of
-        False -> return []
+        False -> return g
         True  -> getSpeciesGroup fetch_remote
 
 -- evaluateGroup :: [Types.RemoteResult] -> IO [Types.RemoteResult]
@@ -88,7 +88,7 @@ getSpeciesGroup fetch_remote = do
 -- | Get only species that have available images.
 filterSpeciesWithImages :: [Types.RemoteResult] -> IO [Types.RemoteResult]
 filterSpeciesWithImages r =
-  filter checkImage <$> mapM upgradeRecord r
+  filter checkImage <$> mapM (upgradeRecord (True, False)) r
   where
     checkImage remote_result =
       case Types.remoteResultImages remote_result of
