@@ -10,8 +10,6 @@ import qualified Data.Text as T
 
 import           Database.Persist
 import           Database.Persist.Sqlite
-import           Database.Persist.TH
-import           Control.Monad.IO.Class
 import           Types
 
 databaseFilepath :: T.Text
@@ -46,8 +44,8 @@ insertInDatabaseBatch :: [Types.RemoteResult] -> IO ()
 insertInDatabaseBatch = mapM_ insertInDatabase
 
 -- | Retrieve all records from the database.
-retrieveGroupFromDatabase :: IO [RemoteResult]
-retrieveGroupFromDatabase =
+retrieveAllDatabaseRecords :: IO [RemoteResult]
+retrieveAllDatabaseRecords =
   runSqlite databaseFilepath $ do
     (records :: [RemoteResult]) <-  map entityVal
                                 <$> selectList [] []
@@ -56,7 +54,7 @@ retrieveGroupFromDatabase =
 -- | Retrieve n randomly-selected `RemoteResult` elements.
 draftFromDatabase :: Int -> IO [RemoteResult]
 draftFromDatabase num = do
-  records   <- retrieveGroupFromDatabase
+  records   <- retrieveAllDatabaseRecords
   retrieved <- sequence $ replicate num (choice records)
   return     $ catMaybes retrieved
 

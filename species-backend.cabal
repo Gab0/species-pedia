@@ -21,6 +21,7 @@ library
                      , RemoteResources.Wikipedia
                      , RemoteResources.Management
                      , Networks.Relationships
+                     , Networks.GroupScore
                      , Types
                      , Storage
                      , Frontend
@@ -47,7 +48,9 @@ library
                      , random
                      , resourcet
                      , conduit
-
+                     , containers
+                     , strict
+                     , pretty-show
   default-language:    Haskell2010
 
 executable species-backend

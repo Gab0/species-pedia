@@ -4,12 +4,15 @@
 
 module RemoteResources.Management where
 
+import           Control.Monad
 import           Data.Default
 import qualified Data.Text as T
 import           Data.Either
 import           Data.Maybe
 import           Data.Aeson
 import qualified Data.ByteString.Lazy.UTF8 as LUTF8
+
+import           Text.Show.Pretty
 
 import           RemoteResources.GBIF
 import           RemoteResources.Images
@@ -43,46 +46,44 @@ manageCachedRemoteContent query_string = do
 -- | Given a list of database records, upgrade the ones that are skeletons,
 -- update the database accordingly and return all records involved, in full state.
 upgradeRecordsIfRequired :: [Types.RemoteResult] -> IO [Types.RemoteResult]
-upgradeRecordsIfRequired rr = do
-  upgraded_records <- mapM (upgradeRecord (True, True)) rr
-  insertInDatabaseBatch upgraded_records
-  return $ full_records ++ upgraded_records
-  where
-    full_records = filter ((== False) . remoteResultSkeletonState) rr
-
-
--- upgradeRecord' :: Types.RemoteResult -> [Types.RemoteResult]
--- upgradeRecord' Types.RemoteResult {..} = do
---   when (contentMissing remoteResultImages) $ do
---     return []
+upgradeRecordsIfRequired =
+  mapM (upgradeRecord (True, True))
 
 -- | Define when the contents of a `RemoteContent` data type still needs to be fetched.
-contentMissing :: (RemoteContent a) -> Bool
+contentMissing :: RemoteContent a -> Bool
 contentMissing = \case
   (Retrieved _) -> False
   NotAvailable  -> False
   NeverTried    -> True
 
 -- | Fetch data for multiple species from GBIF, as skeleton records.
-fetchRandomSpeciesBatch :: Int -> IO [Types.RemoteResult]
+fetchRandomSpeciesBatch :: Int -> IO ()
 fetchRandomSpeciesBatch num = do
   id_list     <- readIDList
   putStrLn     $ "ID list loaded with " ++ show (length id_list) ++ " ids."
 
   contentGBIF <- sequence
-               $ replicate num
+               $ replicate (min num batch_size)
                $ fetchRandomSpecies id_list
 
-  let fetched_records = map (eitherDecode . LUTF8.fromString)
-                      $ catMaybes contentGBIF
+  let
+    fetched_records = map (eitherDecode . LUTF8.fromString)
+                    $ catMaybes contentGBIF
+    records         = map constructSkeletonRecord
+                    $ rights fetched_records
 
-  print fetched_records
-  return $ map constructSkeletonRecord
-         $ rights fetched_records
+  putStrLn $ ppShow records
+
+  insertInDatabaseBatch records
+  fetchRandomSpeciesBatch $ num - batch_size
+
+  where
+    batch_size = 20
 
 -- | Converts a skeleton record into a full record.
+-- Also updates the record in the database.
 -- FIXME: Maybe rewrite everything here properly, with classes and lenses?
--- Once everything works, I guess.
+-- Once everything works, I guess (horrible code).
 upgradeRecord :: (Bool, Bool) -> Types.RemoteResult -> IO Types.RemoteResult
 upgradeRecord (img, wiki) record = do
   record1 <- case img == True && contentMissing (remoteResultImages record) of
@@ -91,12 +92,14 @@ upgradeRecord (img, wiki) record = do
           return  $ record { remoteResultImages = images }
         False -> return record
 
-  case wiki == True && contentMissing (remoteResultWikipedia record) of
+  record2 <- case wiki == True && contentMissing (remoteResultWikipedia record) of
         True -> do
           wiki_content  <- retrieveWikipedia scientific_name
           return $ record1 { remoteResultWikipedia = wiki_content }
         False -> return record1
 
+  when (record /= record2) $ insertInDatabase record2
+  return record2
   where
     scientific_name = T.unpack $ Types.remoteResultScientificName record
 

@@ -52,9 +52,9 @@ RemoteResult
     information SpeciesInformation
     images (RemoteContent [String])
     wikipedia (RemoteContent Text)
-    skeletonState Bool
     QueryString scientificName
     deriving Show
+    deriving Eq
 SpeciesInformation
     kingdom Text Maybe
     phylum Text Maybe
@@ -82,7 +82,7 @@ instance Default SpeciesInformation where
   def = SpeciesInformation Nothing Nothing Nothing Nothing Nothing [] "" []
 
 instance Default RemoteResult where
-  def = RemoteResult "" "" def NeverTried NeverTried True
+  def = RemoteResult "" "" def NeverTried NeverTried
 
 
 -- | Encapsulates retrievable remote content to avoid querying
@@ -90,7 +90,7 @@ instance Default RemoteResult where
 data RemoteContent a = Retrieved a
                      | NotAvailable
                      | NeverTried
-  deriving (Show, Read)
+  deriving (Eq, Show, Read)
 
 instance (Show a, Read a) => PersistField (RemoteContent a) where
     toPersistValue = toPersistValue . show
@@ -207,8 +207,10 @@ $(deriveFromJSON defaultOptions ''NewGameRequest)
 -- | Information required to set a game up.
 -- (GAME STEP 2: Server sends this to the client.)
 data GameSetup = GameSetup
-  { species :: [RemoteResult]
-  , textTip :: Text
+  { species                     :: [RemoteResult]
+  , nbGroups                    :: Int
+  , textTip                     :: Text
+  , gameTaxonomicDiscriminators :: (Int, Int)
   }
 
 $(deriveToJSON defaultOptions ''GameSetup)
@@ -216,16 +218,18 @@ $(deriveToJSON defaultOptions ''GameSetup)
 -- | How the player organized the species.
 -- (GAME STEP 3: Client sents this to the server.)
 data GameAnswer = GameAnswer
-  { speciesGroups :: [[Text]]
+  { speciesGroups                 :: [[Text]]
+  , answerTaxonomicDiscriminators :: (Int, Int)
   }
 
 $(deriveFromJSON defaultOptions ''GameAnswer)
 
 -- | Contains the result of a game.
--- (GAME STEP 4: Server sends this to the client: Game Over.)
+-- (GAME STEP 4: Server sends scores to the client: Game Over, well done (maybe)!)
 data GameResult = GameResult
-  { success       :: Bool
-  , correctAnswer :: [[Text]]
+  { gameResultsuccess       :: Bool
+  , gameResultScore         :: Double
+  , gameResultcorrectAnswer :: [[Text]]
   }
 
 $(deriveToJSON defaultOptions ''GameResult)

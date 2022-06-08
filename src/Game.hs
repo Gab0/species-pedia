@@ -7,83 +7,152 @@ import           Yesod.Form
 
 import           Control.Monad
 
+import           Data.List
+import           Data.Maybe
+import           Data.Text (Text)
+import qualified Data.Text as T
+
 import           RemoteResources.Management
 import           Networks.Relationships
+import           Networks.GroupScore
 import           Foundation
 import           Storage
 
 import           Types
 
+-- | Taxonomic discrimators are the taxonomic levels used to
+-- draft the species set and then divide them into groups, respectively.
+-- This is a major determinant on game difficulty, and also on the
+-- size of database required to generate diversified groups.
+generateTaxonomicDiscriminators :: IO (Int, Int)
+generateTaxonomicDiscriminators = return (1, 2)
+
+generateTips :: (Int, Int) -> T.Text
+generateTips (rootD, gD) = "All species belong to the same "
+                        <> taxonomicCategories !! rootD
+                        <> ", while each group has all members in the same "
+                        <> taxonomicCategories !! gD
+                        <> "."
+  where
+    taxonomicCategories = [ ""
+                          , "Kingdom"
+                          , "Phylum"
+                          , "Order"
+                          , "Genus"
+                          , "Family"
+                          ]
+    fallback_tip        = "No tips, good luck."
+
 -- | Sends a list of species for the game,
 -- containing node information for cytoscapejs and
 -- ready to be consumed by the frontend.
-postAskForSpeciesJ :: Handler Value
-postAskForSpeciesJ = do
+postDraftSpeciesSimulatorJ :: Handler Value
+postDraftSpeciesSimulatorJ = do
   -- TODO: Implement game parameters.
   --parameters <- requireCheckJsonBody :: Handler Types.NewGameRequest
-  base_group <- liftIO $ getSpeciesGroup False
-  liftIO      $ putStrLn "Group found."
-  group      <- liftIO $ upgradeRecordsIfRequired base_group
-  liftIO      $ putStrLn "Group information retrieved."
+  (group, (rootD, gD)) <- liftIO $ getSpeciesGroup False
+  liftIO              $ putStrLn "Group found."
   -- liftIO      $ print group
-  returnJson  $ Types.GameSetup group "No tips, good luck."
+  returnJson  $ Types.GameSetup
+    { species  = group
+    , nbGroups = length $ groupSpeciesByTaxonomy gD group
+    , textTip  = generateTips (rootD, gD)
+    , gameTaxonomicDiscriminators = (rootD, gD)
+    }
 
--- | Validate species groups as classified by the player.
+-- | Score the player's categorization.
 postValidateGroupsJ :: Handler Value
 postValidateGroupsJ = do
-  q <- requireCheckJsonBody :: Handler Types.GameAnswer
-  returnJson $ Types.GameResult False []
+  q       <- requireCheckJsonBody :: Handler Types.GameAnswer
+  let
+    all_species = concat $ Types.speciesGroups q
+    (_, gD)     = Types.answerTaxonomicDiscriminators q
+  records <- liftIO $ mapM loadFromDatabase all_species
 
-postPrecacheGroupsJ :: Handler Value
-postPrecacheGroupsJ = do
+  let
+    species = catMaybes records
+
+    correct_groups          = groupSpeciesByTaxonomy gD species
+    correct_groups_sppnames = extractGroupsSpecies correct_groups
+    gs                      = [correct_groups_sppnames, Types.speciesGroups q]
+    [gcorrect, gplayer]     = map (simplifyGroups $ concat correct_groups_sppnames) gs
+
+    score = compareSpeciesGroups gcorrect gplayer
+
+  liftIO $ putStrLn $ "Evaluating: " <> show [gcorrect, gplayer]
+    <> "\nCorrect: " <> show (head gs)
+    <> "\nPlayer: " <> show (last gs)
+
+  returnJson $ Types.GameResult False score correct_groups_sppnames
+
+  where
+    extractGroupsSpecies :: [[Types.RemoteResult]] -> [[Text]]
+    extractGroupsSpecies = map $ map (T.toLower . remoteResultScientificName)
+
+-- | Endpoint that when called will trigger species precaching.
+-- For ADMIN use only!
+getPrecacheGroupsJ :: Handler Value
+getPrecacheGroupsJ = do
+  liftIO $ putStrLn "Precaching groups..."
   res <- liftIO $ getSpeciesGroup True
   returnJson res
 
 -- | Tries to generate groups of species suitable for playing the `Game`.
--- FIXME: The current code organization is not good... e.g. this function is huge.
-getSpeciesGroup :: Bool -> IO [Types.RemoteResult]
+-- FIXME: The current code organization is not good: this function is huge.
+getSpeciesGroup :: Bool -> IO ([Types.RemoteResult], (Int, Int))
 getSpeciesGroup fetch_remote = do
   putStrLn $ "Fetching group of " <> show number <> " species..."
 
-  when fetch_remote $ do
-    k <- liftIO $ fetchRandomSpeciesBatch number
-    liftIO $ insertInDatabaseBatch k
+  when fetch_remote $ liftIO $ fetchRandomSpeciesBatch number
 
-  recs <- liftIO retrieveGroupFromDatabase
+  (rootD, gD) <- liftIO $ generateTaxonomicDiscriminators
+
+  recs <- liftIO retrieveAllDatabaseRecords
   --mapM_ (print . remoteResultScientificName) recs
   let
-    groups             = groupSpeciesByTaxonomy 2 recs
-    substantial_groups = filter isValidGroup groups
+    groups             = groupSpeciesByTaxonomy rootD recs
+    substantial_groups = filter (isValidGroupSet (rootD, gD)) groups
 
   putStrLn $ "First round group selection: " <> show substantial_groups
   case substantial_groups of
-    []   -> retry []
-    xs   -> do
+    [] -> retry [] (rootD, gD)
+    xs -> do
       --img_groups <- mapM filterSpeciesWithImages xs
       mapM_ (print . length) xs
       putStrLn "Selecting group..."
-      selected_group <- choice $ filter isValidGroup xs
+
+      -- | Select a single group from all the valid that were found.
+      selected_group <- choice $ filter (isValidGroupSet (rootD, gD)) xs
       case selected_group of
         Just g  -> do
           selected_group_img <- filterSpeciesWithImages $ take 16 g
-          putStrLn $ "Group with " <> show (length selected_group_img) <> " images."
-          case isValidGroup selected_group_img of
-            True  -> return g
-            False -> retry g
-        Nothing -> retry []
+
+          putStrLn $ "Group with "
+            <> show (length selected_group_img) <> " images."
+          case isValidGroupSet (rootD, gD) selected_group_img of
+            True  -> return (selected_group_img, (rootD, gD))
+            False -> getSpeciesGroup fetch_remote
+        Nothing -> retry [] (rootD, gD)
   where
-    number         = 100
-    isValidGroup g = length g >= 5
-    retry g        =
-      case fetch_remote of
-        False -> return g
+    number                 = 600
+    retry g discriminators =
+      case fetch_remote  of
+        False -> return (g, discriminators)
         True  -> getSpeciesGroup fetch_remote
 
--- evaluateGroup :: [Types.RemoteResult] -> IO [Types.RemoteResult]
--- evaluateGroup
-
-
-
+-- | Check if a group set meets the criteria to be usable in the game.
+isValidGroupSet :: (Int, Int) -> [Types.RemoteResult] -> Bool
+isValidGroupSet (rootD, gD) groupSet = all (==True)
+  [ length groupSet >= 4
+  -- ^ Ensure a minimum species set.
+  , not $ all (==1) groupSizes
+  -- ^ Ensure we have more species than groups.
+  , (\l -> l >= 2 && l <= 5) $ length expectedAnswer
+  -- ^ Ensure we have between two and five groups.
+  ]
+  where
+    expectedAnswer = groupSpeciesByTaxonomy gD groupSet
+    groupSizes     = map length expectedAnswer
 
 -- | Get only species that have available images.
 filterSpeciesWithImages :: [Types.RemoteResult] -> IO [Types.RemoteResult]
@@ -94,3 +163,25 @@ filterSpeciesWithImages r =
       case Types.remoteResultImages remote_result of
         Retrieved _ -> True
         _           -> False
+
+-- | Simplify clustering representation. 
+-- The output is a label representation for each individual,
+-- with the same ordering as the provided reference.
+simplifyGroups :: [Text] -> [[Text]] -> String
+simplifyGroups reference groups = map findOnGroups reference
+  where
+    findOnGroups ind = 
+      case elemIndex True $ map (\g -> ind `elem` g) groups of 
+        Just idx -> labels !! idx
+        Nothing  -> 'z'
+    labels = ['0'..'z']
+
+-- | Compares a correct species grouping to an to be evaluated group set,
+-- Returning a score on correctness, based on the "Mutual Information" algorithm.
+-- The score is a float in range 0.0~1.0.
+compareSpeciesGroups :: String -> String -> Double
+compareSpeciesGroups correct evaluated = player_score / best_score
+  where
+    calculateScore = mi . counts correct
+    player_score   = calculateScore evaluated
+    best_score     = calculateScore correct

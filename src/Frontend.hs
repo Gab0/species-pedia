@@ -146,7 +146,7 @@ showResultPage (Right content) =
     query_string = T.unpack
                  $ Types.remoteResultOriginalQuery content
 
-    showResults (Types.RemoteResult _ _ results image_urls wikipedia _) = do
+    showResults (Types.RemoteResult _ _ results image_urls wikipedia) = do
       case image_urls of
         Types.Retrieved imgs -> mapM_ (\image_url -> [whamlet|<img src="#{image_url}">|]) imgs
         _                    -> return ()
