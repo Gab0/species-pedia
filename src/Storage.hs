@@ -4,7 +4,7 @@
 module Storage where
 
 import           System.Random
-
+import           System.Environment.Blank
 import           Data.Maybe
 import qualified Data.Text as T
 
@@ -12,17 +12,20 @@ import           Database.Persist
 import           Database.Persist.Sqlite
 import           Types
 
-databaseFilepath :: T.Text
-databaseFilepath = "species-db.sqlite" -- could be ":memory:" for non-persistent db.
+-- | The filepath could be ":memory:" for non-persistent db.
+getDatabaseFilepath :: IO T.Text
+getDatabaseFilepath = T.pack <$> getEnvDefault "species-db.sqlite" "DATABASE_FILEPATH"
 
 -- | Create a new database.
 initializeDatabase :: IO ()
-initializeDatabase =
+initializeDatabase = do
+  databaseFilepath <- getDatabaseFilepath
   runSqlite databaseFilepath $ runMigration migrateAll
 
 -- | Load a record that matches a string from the database.
 loadFromDatabase :: T.Text -> IO (Maybe RemoteResult)
-loadFromDatabase search_query =
+loadFromDatabase search_query = do
+  databaseFilepath <- getDatabaseFilepath
   runSqlite databaseFilepath $ do
     record <- getBy
             $ Types.QueryString search_query
@@ -32,7 +35,8 @@ loadFromDatabase search_query =
 
 -- | Insert a record in the database.
 insertInDatabase :: Types.RemoteResult -> IO ()
-insertInDatabase n =
+insertInDatabase n = do
+  databaseFilepath <- getDatabaseFilepath
   runSqlite databaseFilepath $ do
     existent <- getBy $ Types.QueryString $ remoteResultScientificName n
     case existent of
@@ -45,7 +49,8 @@ insertInDatabaseBatch = mapM_ insertInDatabase
 
 -- | Retrieve all records from the database.
 retrieveAllDatabaseRecords :: IO [RemoteResult]
-retrieveAllDatabaseRecords =
+retrieveAllDatabaseRecords = do
+  databaseFilepath <- getDatabaseFilepath
   runSqlite databaseFilepath $ do
     (records :: [RemoteResult]) <-  map entityVal
                                 <$> selectList [] []
