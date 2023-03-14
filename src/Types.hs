@@ -73,8 +73,8 @@ VernacularName
 |]
 
 data SpeciesQuery = SpeciesQuery
-  { queryContent  :: Text
-  , jsonResponse  :: Bool
+  { queryContent  :: !Text
+  , jsonResponse  :: !Bool
   }
   deriving Show
 
@@ -83,7 +83,6 @@ instance Default SpeciesInformation where
 
 instance Default RemoteResult where
   def = RemoteResult "" "" def NeverTried NeverTried
-
 
 -- | Encapsulates retrievable remote content to avoid querying
 -- unavailable content more than once.
@@ -107,8 +106,8 @@ instance (Show a, Read a) => PersistFieldSql (RemoteContent a) where
 -- These are retrieved by using numerical ID.
 -- FIXME: Deprecated?
 data GBIFFetchResult = GBIFFetchResult
-  { fetchRank           :: T.Text
-  , fetchScientificName :: T.Text
+  { fetchRank           :: !T.Text
+  , fetchScientificName :: !T.Text
   }
   deriving (Show, Eq)
 
@@ -185,9 +184,10 @@ instance Semigroup SpeciesInformation where
       combineVariations :: Text -> Text -> Text
       combineVariations t0 t1
         | t0 == t1  = t0
-        | otherwise = case t1 `elem` content_list of
-            True  -> t0
-            False -> T.intercalate separator $ t1 : content_list
+        | otherwise =
+          if t1 `elem` content_list
+          then t0
+          else T.intercalate separator $ t1 : content_list
           where
             content_list = T.splitOn separator t0
             separator    = " | "
@@ -196,10 +196,10 @@ instance Semigroup SpeciesInformation where
 -- (GAME STEP 1: Client sents this to the server.)
 -- TODO: Most parameter effects are yet to be implemented.
 data NewGameRequest = NewGameRequest
-  { speciesNumber  :: Int
-  , groupNumber    :: Int
-  , speciesGroup   :: Int
-  , gameDifficulty :: Int
+  { speciesNumber  :: !Int
+  , groupNumber    :: !Int
+  , speciesGroup   :: !Int
+  , gameDifficulty :: !Int
   }
 
 $(deriveFromJSON defaultOptions ''NewGameRequest)
@@ -207,10 +207,10 @@ $(deriveFromJSON defaultOptions ''NewGameRequest)
 -- | Information required to set a game up.
 -- (GAME STEP 2: Server sends this to the client.)
 data GameSetup = GameSetup
-  { species                     :: [RemoteResult]
-  , nbGroups                    :: Int
-  , textTip                     :: Text
-  , gameTaxonomicDiscriminators :: (Int, Int)
+  { species                     :: ![RemoteResult]
+  , nbGroups                    :: !Int
+  , textTip                     :: !Text
+  , gameTaxonomicDiscriminators :: !(Int, Int)
   }
 
 $(deriveToJSON defaultOptions ''GameSetup)
@@ -218,8 +218,8 @@ $(deriveToJSON defaultOptions ''GameSetup)
 -- | How the player organized the species.
 -- (GAME STEP 3: Client sents this to the server.)
 data GameAnswer = GameAnswer
-  { speciesGroups                 :: [[Text]]
-  , answerTaxonomicDiscriminators :: (Int, Int)
+  { speciesGroups                 :: ![[Text]]
+  , answerTaxonomicDiscriminators :: !(Int, Int)
   }
 
 $(deriveFromJSON defaultOptions ''GameAnswer)
@@ -227,9 +227,9 @@ $(deriveFromJSON defaultOptions ''GameAnswer)
 -- | Contains the result of a game.
 -- (GAME STEP 4: Server sends scores to the client: Game Over, well done (maybe)!)
 data GameResult = GameResult
-  { gameResultsuccess       :: Bool
-  , gameResultScore         :: Double
-  , gameResultcorrectAnswer :: [[Text]]
+  { gameResultsuccess       :: !Bool
+  , gameResultScore         :: !Double
+  , gameResultcorrectAnswer :: ![[Text]]
   }
 
 $(deriveToJSON defaultOptions ''GameResult)
