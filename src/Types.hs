@@ -238,3 +238,11 @@ $(deriveTypeScript defaultOptions ''NewGameRequest)
 $(deriveTypeScript defaultOptions ''GameSetup)
 $(deriveTypeScript defaultOptions ''GameAnswer)
 $(deriveTypeScript defaultOptions ''GameResult)
+
+data DatabaseDebugInformation = DatabaseDebugInformation
+  { databaseDebugNumberOfSpecies  :: !Int
+  , databaseDebugNumberOfPictured :: !Int
+  , databaseDebugNumberOfGroups   :: !Int
+  }
+
+$(deriveToJSON defaultOptions ''DatabaseDebugInformation)

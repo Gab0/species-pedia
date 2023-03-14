@@ -24,6 +24,8 @@ mkYesodData "App" [parseRoutes|
 /game/new      DraftSpeciesSimulatorJ POST  -- ^ Ask for a new species list;
 /game/answer   ValidateGroupsJ POST         -- ^ Validate species groups as done by some human friend;
 /game/precache PrecacheGroupsJ GET          -- ^ Fetch and build species groups for later use in the game;
+
+/database/info DatabaseInformationJ GET  -- ^ Show statistcs on database contents;
 |]
 
 instance Yesod App

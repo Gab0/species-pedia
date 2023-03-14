@@ -18,6 +18,7 @@ import           Network.Wai.Handler.Warp (run)
 import           Data.Proxy
 import           Data.Aeson.TypeScript.TH
 
+import           Debug
 import           Foundation
 import           Frontend
 import           Game
