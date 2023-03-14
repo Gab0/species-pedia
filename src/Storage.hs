@@ -14,7 +14,7 @@ import           Types
 
 -- | The filepath could be ":memory:" for non-persistent db.
 getDatabaseFilepath :: IO T.Text
-getDatabaseFilepath = T.pack <$> getEnvDefault "species-db.sqlite" "DATABASE_FILEPATH"
+getDatabaseFilepath = T.pack <$> getEnvDefault "DATABASE_FILEPATH" "species-db.sqlite"
 
 -- | Create a new database.
 initializeDatabase :: IO ()

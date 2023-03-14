@@ -12,5 +12,5 @@ RUN stack build
 
 RUN stack install
 
-ENV DATABASE_FILEPATH="/database/species-db.sqlite"
+ENV DATABASE_FILEPATH="/species-database/species-db.sqlite"
 ENTRYPOINT ["stack", "run", "species-backend"]
