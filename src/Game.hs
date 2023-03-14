@@ -24,11 +24,11 @@ import           Types
 -- draft the species set and then divide them into groups, respectively.
 -- This is a major determinant on game difficulty, and also on the
 -- size of database required to generate diversified groups.
-generateTaxonomicDiscriminators :: IO (Int, Int)
-generateTaxonomicDiscriminators = return (1, 2)
+generateTaxonomicDiscriminators :: IO TaxonomicDiscriminators
+generateTaxonomicDiscriminators = return $ TaxonomicDiscriminators 1 2
 
-generateTips :: (Int, Int) -> T.Text
-generateTips (rootD, gD) = "All species belong to the same "
+generateTips :: TaxonomicDiscriminators -> T.Text
+generateTips (TaxonomicDiscriminators rootD gD) = "All species belong to the same "
                         <> taxonomicCategories !! rootD
                         <> ", while each group has all members in the same "
                         <> taxonomicCategories !! gD
@@ -50,14 +50,14 @@ postDraftSpeciesSimulatorJ :: Handler Value
 postDraftSpeciesSimulatorJ = do
   -- TODO: Implement game parameters.
   --parameters <- requireCheckJsonBody :: Handler Types.NewGameRequest
-  (group, (rootD, gD)) <- liftIO $ getSpeciesGroup False
+  (group, txd) <- liftIO $ getSpeciesGroup False
   liftIO              $ putStrLn "Group found."
   -- liftIO      $ print group
   returnJson  $ Types.GameSetup
     { species  = group
-    , nbGroups = length $ groupSpeciesByTaxonomy gD group
-    , textTip  = generateTips (rootD, gD)
-    , gameTaxonomicDiscriminators = (rootD, gD)
+    , nbGroups = length $ groupSpeciesByTaxonomy (groupDiscriminator txd) group
+    , textTip  = generateTips txd
+    , gameTaxonomicDiscriminators = txd
     }
 
 -- | Score the player's categorization.
@@ -66,7 +66,7 @@ postValidateGroupsJ = do
   q       <- requireCheckJsonBody :: Handler Types.GameAnswer
   let
     all_species = concat $ Types.speciesGroups q
-    (_, gD)     = Types.answerTaxonomicDiscriminators q
+    TaxonomicDiscriminators _ gD = Types.answerTaxonomicDiscriminators q
   records <- liftIO $ mapM loadFromDatabase all_species
 
   let
@@ -99,40 +99,40 @@ getPrecacheGroupsJ = do
 
 -- | Tries to generate groups of species suitable for playing the `Game`.
 -- FIXME: The current code organization is not good: this function is huge.
-getSpeciesGroup :: Bool -> IO ([Types.RemoteResult], (Int, Int))
+getSpeciesGroup :: Bool -> IO ([Types.RemoteResult], TaxonomicDiscriminators)
 getSpeciesGroup fetch_remote = do
   putStrLn $ "Fetching group of " <> show number <> " species..."
 
   when fetch_remote $ liftIO $ fetchRandomSpeciesBatch number
 
-  (rootD, gD) <- liftIO $ generateTaxonomicDiscriminators
+  td@(TaxonomicDiscriminators rootD gD) <- liftIO generateTaxonomicDiscriminators
 
   recs <- liftIO retrieveAllDatabaseRecords
   --mapM_ (print . remoteResultScientificName) recs
   let
     groups             = groupSpeciesByTaxonomy rootD recs
-    substantial_groups = filter (isValidGroupSet (rootD, gD)) groups
+    substantial_groups = filter (isValidGroupSet td) groups
 
   putStrLn $ "First round group selection: " <> show substantial_groups
   case substantial_groups of
-    [] -> retry [] (rootD, gD)
+    [] -> retry [] td
     xs -> do
       --img_groups <- mapM filterSpeciesWithImages xs
       mapM_ (print . length) xs
       putStrLn "Selecting group..."
 
-      -- | Select a single group from all the valid that were found.
-      selected_group <- choice $ filter (isValidGroupSet (rootD, gD)) xs
+      -- Select a single group from all the valid that were found.
+      selected_group <- choice $ filter (isValidGroupSet td) xs
       case selected_group of
         Just g  -> do
           selected_group_img <- filterSpeciesWithImages $ take 16 g
 
           putStrLn $ "Group with "
             <> show (length selected_group_img) <> " images."
-          case isValidGroupSet (rootD, gD) selected_group_img of
-            True  -> return (selected_group_img, (rootD, gD))
-            False -> getSpeciesGroup fetch_remote
-        Nothing -> retry [] (rootD, gD)
+          if isValidGroupSet td selected_group_img
+          then return (selected_group_img, td)
+          else getSpeciesGroup fetch_remote
+        Nothing -> retry [] td
   where
     number                 = 600
     retry g discriminators =
@@ -141,8 +141,8 @@ getSpeciesGroup fetch_remote = do
         True  -> getSpeciesGroup fetch_remote
 
 -- | Check if a group set meets the criteria to be usable in the game.
-isValidGroupSet :: (Int, Int) -> [Types.RemoteResult] -> Bool
-isValidGroupSet (rootD, gD) groupSet = all (==True)
+isValidGroupSet :: TaxonomicDiscriminators -> [Types.RemoteResult] -> Bool
+isValidGroupSet (TaxonomicDiscriminators rootD gD) groupSet = all (==True)
   [ length groupSet >= 4
   -- ^ Ensure a minimum species set.
   , not $ all (==1) groupSizes

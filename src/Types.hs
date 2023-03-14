@@ -9,6 +9,7 @@
 {-# LANGUAGE TypeFamilies               #-}
 {-# LANGUAGE DerivingStrategies         #-}
 {-# LANGUAGE StandaloneDeriving         #-}
+{-# LANGUAGE RecordWildCards            #-}
 {-# LANGUAGE UndecidableInstances       #-}
 {-# LANGUAGE DataKinds                  #-}
 {-# LANGUAGE FlexibleInstances          #-}
@@ -32,8 +33,27 @@ import           Language.Haskell.TH
 import           Text.Read
 
 import qualified Data.ByteString.Lazy.UTF8 as LUTF8
-import           Generics.Deriving.Semigroup
+import Generics.Deriving.Semigroup ()
 import           GHC.Generics (Generic)
+
+data TaxonomicDiscriminators = TaxonomicDiscriminators
+  { rootDisciminator   :: !Int
+  , groupDiscriminator :: !Int
+  } deriving (Show, Read, Generic)
+
+$(deriveToJSON defaultOptions ''TaxonomicDiscriminators)
+$(deriveFromJSON defaultOptions ''TaxonomicDiscriminators)
+$(deriveTypeScript defaultOptions ''TaxonomicDiscriminators)
+
+instance PersistField TaxonomicDiscriminators where
+  toPersistValue TaxonomicDiscriminators {..} = toPersistValue $ show (rootDisciminator, groupDiscriminator)
+  fromPersistValue (PersistText pv) =
+    case readMaybe $ T.unpack pv of
+      Just (a, b) -> Right $ TaxonomicDiscriminators a b
+      _           -> Left $ "Unable to parse " <> pv <> "."
+
+instance PersistFieldSql TaxonomicDiscriminators where
+  sqlType _ = SqlString
 
 -- Declare the datatypes inside this TemplateHaskell quasi-quoter.
 -- TH creates the data types and derivings to allow the usage
@@ -70,6 +90,10 @@ VernacularName
     vernacularName Text
     deriving Show
     deriving Eq
+GameGroup
+    species [Text]
+    speciesGroups [Int]
+    taxonomicDiscriminators TaxonomicDiscriminators
 |]
 
 data SpeciesQuery = SpeciesQuery
@@ -210,7 +234,7 @@ data GameSetup = GameSetup
   { species                     :: ![RemoteResult]
   , nbGroups                    :: !Int
   , textTip                     :: !Text
-  , gameTaxonomicDiscriminators :: !(Int, Int)
+  , gameTaxonomicDiscriminators :: !TaxonomicDiscriminators
   }
 
 $(deriveToJSON defaultOptions ''GameSetup)
@@ -219,7 +243,7 @@ $(deriveToJSON defaultOptions ''GameSetup)
 -- (GAME STEP 3: Client sents this to the server.)
 data GameAnswer = GameAnswer
   { speciesGroups                 :: ![[Text]]
-  , answerTaxonomicDiscriminators :: !(Int, Int)
+  , answerTaxonomicDiscriminators :: !TaxonomicDiscriminators
   }
 
 $(deriveFromJSON defaultOptions ''GameAnswer)
@@ -227,7 +251,7 @@ $(deriveFromJSON defaultOptions ''GameAnswer)
 -- | Contains the result of a game.
 -- (GAME STEP 4: Server sends scores to the client: Game Over, well done (maybe)!)
 data GameResult = GameResult
-  { gameResultsuccess       :: !Bool
+  { gameResultSuccess       :: !Bool
   , gameResultScore         :: !Double
   , gameResultcorrectAnswer :: ![[Text]]
   }
@@ -246,3 +270,4 @@ data DatabaseDebugInformation = DatabaseDebugInformation
   }
 
 $(deriveToJSON defaultOptions ''DatabaseDebugInformation)
+
