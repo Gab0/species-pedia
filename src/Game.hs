@@ -137,11 +137,16 @@ getSpeciesGroup fetch_remote = do
           else getSpeciesGroup fetch_remote
         Nothing -> retry [] td
   where
-    number                 = 600
     retry g discriminators =
-      if fetch_remote
-      then getSpeciesGroup fetch_remote
-      else return (g, discriminators)
+      if fetch_remote_number > 0
+      then getSpeciesGroup fetch_remote_number
+      else do
+        precached <- retrieveStoredGroup
+        case precached of
+          Just res -> return res
+          Nothing  -> return (g, discriminators)
+
+-- * Group storage and loading routines.
 
 -- | Ensure a single group seed is properly stored in the database for later use.
 storeGroup :: ([Types.RemoteResult], TaxonomicDiscriminators) -> IO ()
@@ -154,6 +159,17 @@ storeGroup (g, td) = do
     names = sort $ map remoteResultScientificName g
     gameSeed = GameGroup names td
 
+-- | Restore a random group seed from the known groups in the database.
+retrieveStoredGroup :: IO (Maybe ([Types.RemoteResult], TaxonomicDiscriminators))
+retrieveStoredGroup = do
+  existing_groups <- retrieveAllDatabaseGameSeeds
+  selected <- choice existing_groups
+
+  case selected of
+    Nothing -> pure Nothing
+    Just GameGroup {..} -> do
+      records <- catMaybes <$> mapM loadFromDatabase gameGroupSpecies
+      pure $ Just (records, gameGroupTaxonomicDiscriminators)
 -- | Check if a group set meets the criteria to be usable in the game.
 isValidGroupSet :: TaxonomicDiscriminators -> [Types.RemoteResult] -> Bool
 isValidGroupSet (TaxonomicDiscriminators rootD gD) groupSet = all (==True)
