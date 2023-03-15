@@ -19,5 +19,5 @@ getDatabaseInformationJ = do
   where
     hasImages record =
       case remoteResultImages record of
-        Retrieved [_] -> True
-        _             -> False
+        Retrieved _ -> True
+        _           -> False
