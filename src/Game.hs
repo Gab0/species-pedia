@@ -158,11 +158,11 @@ storeGroup (g, td) = do
 isValidGroupSet :: TaxonomicDiscriminators -> [Types.RemoteResult] -> Bool
 isValidGroupSet (TaxonomicDiscriminators rootD gD) groupSet = all (==True)
   [ length groupSet >= 4
-  -- ^ Ensure a minimum species set.
+  -- Ensure a minimum species set.
   , not $ all (==1) groupSizes
-  -- ^ Ensure we have more species than groups.
+  -- Ensure we have more species than groups.
   , (\l -> l >= 2 && l <= 5) $ length expectedAnswer
-  -- ^ Ensure we have between two and five groups.
+  -- Ensure we have between two and five groups.
   ]
   where
     expectedAnswer = groupSpeciesByTaxonomy gD groupSet
