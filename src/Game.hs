@@ -1,4 +1,5 @@
-{-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE RecordWildCards     #-}
 
 module Game where
 
@@ -8,7 +9,7 @@ import           Yesod.Form
 import           Control.Monad
 
 import           Data.List
-import           Data.Maybe
+import           Data.Maybe ( catMaybes )
 import           Data.Text (Text)
 import qualified Data.Text as T
 
@@ -50,7 +51,7 @@ postDraftSpeciesSimulatorJ :: Handler Value
 postDraftSpeciesSimulatorJ = do
   -- TODO: Implement game parameters.
   --parameters <- requireCheckJsonBody :: Handler Types.NewGameRequest
-  (group, txd) <- liftIO $ getSpeciesGroup False
+  (group, txd) <- liftIO $ getSpeciesGroup 0
   liftIO              $ putStrLn "Group found."
   -- liftIO      $ print group
   returnJson  $ Types.GameSetup
@@ -94,16 +95,16 @@ postValidateGroupsJ = do
 getPrecacheGroupsJ :: Handler Value
 getPrecacheGroupsJ = do
   liftIO $ putStrLn "Precaching groups..."
-  res <- liftIO $ getSpeciesGroup True
+  res <- liftIO $ mapM (\_ -> getSpeciesGroup 300) [0..30]
   returnJson res
 
 -- | Tries to generate groups of species suitable for playing the `Game`.
 -- FIXME: The current code organization is not good: this function is huge.
-getSpeciesGroup :: Bool -> IO ([Types.RemoteResult], TaxonomicDiscriminators)
-getSpeciesGroup fetch_remote = do
-  putStrLn $ "Fetching group of " <> show number <> " species..."
+getSpeciesGroup :: Int -> IO ([Types.RemoteResult], TaxonomicDiscriminators)
+getSpeciesGroup fetch_remote_number = do
+  putStrLn $ "Fetching group of " <> show fetch_remote_number <> " species..."
 
-  when fetch_remote $ liftIO $ fetchRandomSpeciesBatch number
+  when (fetch_remote_number > 0) $ liftIO $ fetchRandomSpeciesBatch fetch_remote_number
 
   td@(TaxonomicDiscriminators rootD gD) <- liftIO generateTaxonomicDiscriminators
 
@@ -134,7 +135,7 @@ getSpeciesGroup fetch_remote = do
             let result = (selected_group_img, td)
             storeGroup result
             return result
-          else getSpeciesGroup fetch_remote
+          else getSpeciesGroup fetch_remote_number
         Nothing -> retry [] td
   where
     retry g discriminators =
@@ -170,6 +171,9 @@ retrieveStoredGroup = do
     Just GameGroup {..} -> do
       records <- catMaybes <$> mapM loadFromDatabase gameGroupSpecies
       pure $ Just (records, gameGroupTaxonomicDiscriminators)
+
+-- * Group validation routines.
+
 -- | Check if a group set meets the criteria to be usable in the game.
 isValidGroupSet :: TaxonomicDiscriminators -> [Types.RemoteResult] -> Bool
 isValidGroupSet (TaxonomicDiscriminators rootD gD) groupSet = all (==True)
