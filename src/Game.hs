@@ -122,7 +122,7 @@ getSpeciesGroup fetch_remote = do
       putStrLn "Selecting group..."
 
       -- Select a single group from all the valid that were found.
-      selected_group <- choice $ filter (isValidGroupSet td) xs
+      selected_group <- choice xs
       case selected_group of
         Just g  -> do
           selected_group_img <- filterSpeciesWithImages $ take 16 g
@@ -130,15 +130,29 @@ getSpeciesGroup fetch_remote = do
           putStrLn $ "Group with "
             <> show (length selected_group_img) <> " images."
           if isValidGroupSet td selected_group_img
-          then return (selected_group_img, td)
+          then do
+            let result = (selected_group_img, td)
+            storeGroup result
+            return result
           else getSpeciesGroup fetch_remote
         Nothing -> retry [] td
   where
     number                 = 600
     retry g discriminators =
-      case fetch_remote  of
-        False -> return (g, discriminators)
-        True  -> getSpeciesGroup fetch_remote
+      if fetch_remote
+      then getSpeciesGroup fetch_remote
+      else return (g, discriminators)
+
+-- | Ensure a single group seed is properly stored in the database for later use.
+storeGroup :: ([Types.RemoteResult], TaxonomicDiscriminators) -> IO ()
+storeGroup (g, td) = do
+  existing_groups <- map gameGroupSpecies <$> retrieveAllDatabaseGameSeeds
+  if names `elem` existing_groups
+  then return ()
+  else insertGameSeedInDatabase gameSeed
+  where
+    names = sort $ map remoteResultScientificName g
+    gameSeed = GameGroup names td
 
 -- | Check if a group set meets the criteria to be usable in the game.
 isValidGroupSet :: TaxonomicDiscriminators -> [Types.RemoteResult] -> Bool

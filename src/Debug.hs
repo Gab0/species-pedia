@@ -14,7 +14,8 @@ getDatabaseInformationJ = do
     dbsize = length all_records
     nb_pictured = length $ filter hasImages all_records
 
-  returnJson $ DatabaseDebugInformation dbsize nb_pictured 0
+  nb_groups <- length <$> liftIO retrieveAllDatabaseGameSeeds
+  returnJson $ DatabaseDebugInformation dbsize nb_pictured nb_groups
   where
     hasImages record =
       case remoteResultImages record of

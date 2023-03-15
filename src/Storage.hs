@@ -33,15 +33,19 @@ loadFromDatabase search_query = do
     return $  entityVal
           <$> record
 
+-- | Run a database action.
+--runDB :: (a -> IO b) -> IO ()
+runDB f = do
+  databaseFilepath <- getDatabaseFilepath
+  runSqlite databaseFilepath f
+
 -- | Insert a record in the database.
 insertInDatabase :: Types.RemoteResult -> IO ()
-insertInDatabase n = do
-  databaseFilepath <- getDatabaseFilepath
-  runSqlite databaseFilepath $ do
-    existent <- getBy $ Types.QueryString $ remoteResultScientificName n
-    case existent of
-      Just k  -> replace (entityKey k) n
-      Nothing -> insert_ n
+insertInDatabase n = runDB $ do
+  existent <- getBy $ Types.QueryString $ remoteResultScientificName n
+  case existent of
+    Just k  -> replace (entityKey k) n
+    Nothing -> insert_ n
 
 -- | Insert multiple records in the database.
 insertInDatabaseBatch :: [Types.RemoteResult] -> IO ()
@@ -49,12 +53,22 @@ insertInDatabaseBatch = mapM_ insertInDatabase
 
 -- | Retrieve all records from the database.
 retrieveAllDatabaseRecords :: IO [RemoteResult]
-retrieveAllDatabaseRecords = do
-  databaseFilepath <- getDatabaseFilepath
-  runSqlite databaseFilepath $ do
+retrieveAllDatabaseRecords = runDB $ do
     (records :: [RemoteResult]) <-  map entityVal
                                 <$> selectList [] []
     return records
+
+-- | Retrieve all game seeds from the database.
+retrieveAllDatabaseGameSeeds :: IO [GameGroup]
+retrieveAllDatabaseGameSeeds = do
+  databaseFilepath <- getDatabaseFilepath
+  runSqlite databaseFilepath $ do
+    (records :: [GameGroup]) <- map entityVal <$> selectList [] []
+    return records
+
+-- | Insert a GameSeed object in the database.
+insertGameSeedInDatabase :: GameGroup -> IO ()
+insertGameSeedInDatabase = runDB . insert_
 
 -- | Retrieve n randomly-selected `RemoteResult` elements.
 draftFromDatabase :: Int -> IO [RemoteResult]

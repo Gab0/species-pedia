@@ -16,6 +16,7 @@
 {-# LANGUAGE DeriveAnyClass             #-}
 {-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
+{-# LANGUAGE InstanceSigs               #-}
 
 module Types where
 
@@ -27,6 +28,7 @@ import           Database.Persist
 import           Data.Default
 import           Database.Persist.TH
 import           Data.Aeson.TypeScript.TH
+import           Data.Proxy
 import Database.Persist.Sql
 
 import           Language.Haskell.TH
@@ -47,10 +49,12 @@ $(deriveTypeScript defaultOptions ''TaxonomicDiscriminators)
 
 instance PersistField TaxonomicDiscriminators where
   toPersistValue TaxonomicDiscriminators {..} = toPersistValue $ show (rootDisciminator, groupDiscriminator)
+  fromPersistValue :: PersistValue -> Either Text TaxonomicDiscriminators
   fromPersistValue (PersistText pv) =
     case readMaybe $ T.unpack pv of
       Just (a, b) -> Right $ TaxonomicDiscriminators a b
-      _           -> Left $ "Unable to parse " <> pv <> "."
+      Nothing     -> Left $ "Unable to parse " <> pv <> "."
+  fromPersistValue e = Left $ "Bad input value of" <> T.pack (show e)
 
 instance PersistFieldSql TaxonomicDiscriminators where
   sqlType _ = SqlString
@@ -92,7 +96,6 @@ VernacularName
     deriving Eq
 GameGroup
     species [Text]
-    speciesGroups [Int]
     taxonomicDiscriminators TaxonomicDiscriminators
 |]
 
@@ -119,11 +122,12 @@ instance (Show a, Read a) => PersistField (RemoteContent a) where
     toPersistValue = toPersistValue . show
     fromPersistValue (PersistText pv) =
         case readMaybe $ T.unpack pv of
-            Just w -> Right w
-            _      -> Left $ T.pack $ "Unable to parse RemoteContent: <" <> show pv <> ">"
+            Just w  -> Right w
+            Nothing -> Left $ T.pack $ "Unable to parse RemoteContent: <" <> show pv <> ">"
     fromPersistValue _                = Left "Weird RemoteContent result."
 
 instance (Show a, Read a) => PersistFieldSql (RemoteContent a) where
+    sqlType :: (Show a, Read a) => Proxy (RemoteContent a) -> SqlType
     sqlType _ = SqlString
 
 -- | Stores relevant information from a direct fetch from GBIF.
