@@ -39,9 +39,9 @@ appCorsResourcePolicy =
 
 generateTSBindings :: String
 generateTSBindings = formatTSDeclarations (
-  (getTypeScriptDeclarations (Proxy :: Proxy VernacularName)) <>
-  (getTypeScriptDeclarations (Proxy :: Proxy SpeciesInformation)) <>
-  (getTypeScriptDeclarations (Proxy :: Proxy RemoteResult))
+  getTypeScriptDeclarations (Proxy :: Proxy VernacularName) <>
+  getTypeScriptDeclarations (Proxy :: Proxy SpeciesInformation) <>
+  getTypeScriptDeclarations (Proxy :: Proxy RemoteResult)
   )
 
 writeTSBindings :: IO ()

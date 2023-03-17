@@ -18,23 +18,24 @@ getDatabaseFilepath = T.pack <$> getEnvDefault "DATABASE_FILEPATH" "species-db.s
 
 -- | Create a new database.
 initializeDatabase :: IO ()
-initializeDatabase = do
-  databaseFilepath <- getDatabaseFilepath
-  runSqlite databaseFilepath $ runMigration migrateAll
+initializeDatabase = runDB $ runMigration migrateAll
 
 -- | Load a record that matches a string from the database.
 loadFromDatabase :: T.Text -> IO (Maybe RemoteResult)
-loadFromDatabase search_query = do
-  databaseFilepath <- getDatabaseFilepath
-  runSqlite databaseFilepath $ do
+loadFromDatabase search_query = runDB $ do
     record <- getBy
             $ Types.QueryString search_query
 
-    return $  entityVal
-          <$> record
+    return $ entityVal <$> record
 
 -- | Run a database action.
 --runDB :: (a -> IO b) -> IO ()
+runDB :: transformers-0.5.6.2:Control.Monad.Trans.Reader.ReaderT
+  SqlBackend
+  (monad-logger-0.3.36:Control.Monad.Logger.NoLoggingT
+     (Control.Monad.Trans.Resource.Internal.ResourceT IO))
+  b
+-> IO b
 runDB f = do
   databaseFilepath <- getDatabaseFilepath
   runSqlite databaseFilepath f
@@ -60,9 +61,7 @@ retrieveAllDatabaseRecords = runDB $ do
 
 -- | Retrieve all game seeds from the database.
 retrieveAllDatabaseGameSeeds :: IO [GameGroup]
-retrieveAllDatabaseGameSeeds = do
-  databaseFilepath <- getDatabaseFilepath
-  runSqlite databaseFilepath $ do
+retrieveAllDatabaseGameSeeds = runDB $ do
     (records :: [GameGroup]) <- map entityVal <$> selectList [] []
     return records
 
