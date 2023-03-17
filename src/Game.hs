@@ -145,10 +145,7 @@ getSpeciesGroups speciesPool fetch_remote_number td@TaxonomicDiscriminators{..} 
 
   groups <- mapM (const $ getGroupFromPools taxonomic_pools) [0..30]
 
-  let  substantial_groups = filter (isValidGroupSet td) groups
-
-  -- putStrLn $ "First round group selection: " <> show substantial_groups
-  case substantial_groups of
+  case filter (isValidGroup td) groups of
     [] -> retry [] td
     xs -> do
       --img_groups <- mapM filterSpeciesWithImages xs
@@ -163,7 +160,8 @@ getSpeciesGroups speciesPool fetch_remote_number td@TaxonomicDiscriminators{..} 
 
           putStrLn $ "Group with "
             <> show (length selected_group_img) <> " images."
-          if isValidGroupSet td selected_group_img
+
+          if isValidGroup td selected_group_img
           then do
             let result = (selected_group_img, td)
             storeGroup result
@@ -184,21 +182,24 @@ getSpeciesGroups speciesPool fetch_remote_number td@TaxonomicDiscriminators{..} 
 
 -- | Randomically generate a group from a pool of species records.
 generateSingleGroup :: [RemoteResult] -> IO [RemoteResult]
-generateSingleGroup speciesPool = do
-  n <- fromMaybe 4 <$> choice [3..6 :: Int]
-  catMaybes <$> mapM (const $ choice speciesPool) [0..n]
+generateSingleGroup speciesPool =
+  if length speciesPool < 3
+  then return speciesPool
+  else do
+    n <- fromMaybe 4 <$> choice [3..6 :: Int]
+    nub . catMaybes <$> mapM (const $ choice speciesPool) [0..n]
 
 -- * Group storage and loading routines.
 
 -- | Ensure a single group seed is properly stored in the database for later use.
 storeGroup :: SpeciesGroup -> IO ()
-storeGroup (g, td) = do
+storeGroup (group, td) = do
   existing_groups <- map gameGroupSpecies <$> retrieveAllDatabaseGameSeeds
   if names `elem` existing_groups
   then return ()
   else insertGameSeedInDatabase gameSeed
   where
-    names = sort $ map remoteResultScientificName g
+    names = sort $ map remoteResultScientificName group
     gameSeed = GameGroup names td
 
 -- | Restore a random group seed from the known groups in the database.
@@ -218,8 +219,8 @@ retrieveStoredGroup = do
 -- * Group validation routines.
 
 -- | Check if a group set meets the criteria to be usable in the game.
-isValidGroupSet :: TaxonomicDiscriminators -> [Types.RemoteResult] -> Bool
-isValidGroupSet TaxonomicDiscriminators {..} groupSet = all (==True)
+isValidGroup :: TaxonomicDiscriminators -> [Types.RemoteResult] -> Bool
+isValidGroup TaxonomicDiscriminators {..} groupSet = all (==True)
   [ length groupSet >= 4
   -- Ensure a minimum species set.
   , not $ all (==1) groupSizes
