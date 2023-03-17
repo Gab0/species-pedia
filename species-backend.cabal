@@ -52,6 +52,8 @@ library
                      , containers
                      , strict
                      , pretty-show
+                     , transformers
+                     , monad-logger
   default-language:    Haskell2010
 
 executable species-backend

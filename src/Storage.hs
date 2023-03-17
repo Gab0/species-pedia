@@ -3,12 +3,20 @@
 
 module Storage where
 
+import           Control.Monad.Trans.Reader
+import           Control.Monad.Logger
+import           Control.Monad.Trans.Resource.Internal
+
 import           System.Random
 import           System.Environment.Blank
 import           Data.Maybe
 import qualified Data.Text as T
 
-import           Database.Persist
+import Database.Persist
+    ( selectList,
+      Entity(entityKey, entityVal),
+      PersistStoreWrite(insert_, replace),
+      PersistUniqueRead(getBy) )
 import           Database.Persist.Sqlite
 import           Types
 
@@ -29,13 +37,7 @@ loadFromDatabase search_query = runDB $ do
     return $ entityVal <$> record
 
 -- | Run a database action.
---runDB :: (a -> IO b) -> IO ()
-runDB :: transformers-0.5.6.2:Control.Monad.Trans.Reader.ReaderT
-  SqlBackend
-  (monad-logger-0.3.36:Control.Monad.Logger.NoLoggingT
-     (Control.Monad.Trans.Resource.Internal.ResourceT IO))
-  b
--> IO b
+runDB :: ReaderT SqlBackend (NoLoggingT (ResourceT IO)) b -> IO b
 runDB f = do
   databaseFilepath <- getDatabaseFilepath
   runSqlite databaseFilepath f
