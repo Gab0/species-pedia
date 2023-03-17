@@ -191,12 +191,15 @@ isValidGroupSet (TaxonomicDiscriminators rootD gD) groupSet = all (==True)
 -- | Get only species that have available images.
 filterSpeciesWithImages :: [Types.RemoteResult] -> IO [Types.RemoteResult]
 filterSpeciesWithImages r =
-  filter checkImage <$> mapM (upgradeRecord (True, False)) r
-  where
-    checkImage remote_result =
-      case Types.remoteResultImages remote_result of
-        Retrieved _ -> True
-        _           -> False
+  filter hasImage <$> mapM (upgradeRecord (True, False)) r
+
+-- | Checks whether a record has attached images.
+hasImage :: RemoteResult -> Bool
+hasImage remote_result =
+  case Types.remoteResultImages remote_result of
+    Retrieved _  -> True
+    NotAvailable -> False
+    NeverTried   -> False
 
 -- | Simplify clustering representation. 
 -- The output is a label representation for each individual,
