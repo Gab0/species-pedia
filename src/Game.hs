@@ -147,7 +147,7 @@ getSpeciesGroups speciesPool fetch_remote_number td@TaxonomicDiscriminators{..} 
 
   let  substantial_groups = filter (isValidGroupSet td) groups
 
-  putStrLn $ "First round group selection: " <> show substantial_groups
+  -- putStrLn $ "First round group selection: " <> show substantial_groups
   case substantial_groups of
     [] -> retry [] td
     xs -> do
