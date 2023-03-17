@@ -170,6 +170,8 @@ retrieveStoredGroup = do
     Nothing -> pure Nothing
     Just GameGroup {..} -> do
       records <- catMaybes <$> mapM loadFromDatabase gameGroupSpecies
+      when (length records < length gameGroupSpecies)
+        $ putStrLn $ "FAIL: Bad group!" <> show gameGroupSpecies
       pure $ Just (records, gameGroupTaxonomicDiscriminators)
 
 -- * Group validation routines.
