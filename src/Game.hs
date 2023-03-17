@@ -29,10 +29,10 @@ generateTaxonomicDiscriminators :: IO TaxonomicDiscriminators
 generateTaxonomicDiscriminators = return $ TaxonomicDiscriminators 1 2
 
 generateTips :: TaxonomicDiscriminators -> T.Text
-generateTips (TaxonomicDiscriminators rootD gD) = "All species belong to the same "
-                        <> taxonomicCategories !! rootD
+generateTips TaxonomicDiscriminators {..} = "All species belong to the same "
+                        <> taxonomicCategories !! rootDiscriminator
                         <> ", while each group has all members in the same "
-                        <> taxonomicCategories !! gD
+                        <> taxonomicCategories !! groupDiscriminator
                         <> "."
   where
     taxonomicCategories = [ ""
@@ -150,7 +150,7 @@ getSpeciesGroup fetch_remote_number = do
 -- * Group storage and loading routines.
 
 -- | Ensure a single group seed is properly stored in the database for later use.
-storeGroup :: ([Types.RemoteResult], TaxonomicDiscriminators) -> IO ()
+storeGroup :: SpeciesGroup -> IO ()
 storeGroup (g, td) = do
   existing_groups <- map gameGroupSpecies <$> retrieveAllDatabaseGameSeeds
   if names `elem` existing_groups
@@ -161,7 +161,7 @@ storeGroup (g, td) = do
     gameSeed = GameGroup names td
 
 -- | Restore a random group seed from the known groups in the database.
-retrieveStoredGroup :: IO (Maybe ([Types.RemoteResult], TaxonomicDiscriminators))
+retrieveStoredGroup :: IO (Maybe SpeciesGroup)
 retrieveStoredGroup = do
   existing_groups <- retrieveAllDatabaseGameSeeds
   selected <- choice existing_groups
@@ -176,7 +176,7 @@ retrieveStoredGroup = do
 
 -- | Check if a group set meets the criteria to be usable in the game.
 isValidGroupSet :: TaxonomicDiscriminators -> [Types.RemoteResult] -> Bool
-isValidGroupSet (TaxonomicDiscriminators rootD gD) groupSet = all (==True)
+isValidGroupSet TaxonomicDiscriminators {..} groupSet = all (==True)
   [ length groupSet >= 4
   -- Ensure a minimum species set.
   , not $ all (==1) groupSizes
@@ -185,7 +185,7 @@ isValidGroupSet (TaxonomicDiscriminators rootD gD) groupSet = all (==True)
   -- Ensure we have between two and five groups.
   ]
   where
-    expectedAnswer = groupSpeciesByTaxonomy gD groupSet
+    expectedAnswer = groupSpeciesByTaxonomy groupDiscriminator groupSet
     groupSizes     = map length expectedAnswer
 
 -- | Get only species that have available images.

@@ -22,7 +22,13 @@ module Types where
 
 import           Data.Text    (Text)
 import qualified Data.Text as T
-import           Data.Aeson
+import Data.Aeson
+    ( FromJSON(parseJSON),
+      Value(Object),
+      (.!=),
+      (.:),
+      (.:?),
+      defaultOptions )
 import           Data.Aeson.TH
 import           Database.Persist
 import           Data.Default
@@ -39,7 +45,7 @@ import Generics.Deriving.Semigroup ()
 import           GHC.Generics (Generic)
 
 data TaxonomicDiscriminators = TaxonomicDiscriminators
-  { rootDisciminator   :: !Int
+  { rootDiscriminator   :: !Int
   , groupDiscriminator :: !Int
   } deriving (Show, Read, Generic)
 
@@ -48,7 +54,7 @@ $(deriveFromJSON defaultOptions ''TaxonomicDiscriminators)
 $(deriveTypeScript defaultOptions ''TaxonomicDiscriminators)
 
 instance PersistField TaxonomicDiscriminators where
-  toPersistValue TaxonomicDiscriminators {..} = toPersistValue $ show (rootDisciminator, groupDiscriminator)
+  toPersistValue TaxonomicDiscriminators {..} = toPersistValue $ show (rootDiscriminator, groupDiscriminator)
   fromPersistValue :: PersistValue -> Either Text TaxonomicDiscriminators
   fromPersistValue (PersistText pv) =
     case readMaybe $ T.unpack pv of
@@ -98,6 +104,8 @@ GameGroup
     species [Text]
     taxonomicDiscriminators TaxonomicDiscriminators
 |]
+
+type SpeciesGroup = ([Types.RemoteResult], TaxonomicDiscriminators)
 
 data SpeciesQuery = SpeciesQuery
   { queryContent  :: !Text
@@ -152,7 +160,7 @@ newtype GBIFSearchResult = GBIFSearchResult [SpeciesInformation]
 instance FromJSON GBIFSearchResult where
   parseJSON (Object v) =  GBIFSearchResult
                       <$> v .: "results"
-  parseJSON _          = fail ""
+  parseJSON _          = fail "Invalid GBIF search result."
 
 instance FromJSON SpeciesInformation where
   parseJSON (Object v) =
@@ -170,7 +178,7 @@ instance FromJSON SpeciesInformation where
 instance FromJSON VernacularName where
   parseJSON (Object v) =
     VernacularName <$> v .: "vernacularName"
-  parseJSON _          = fail ""
+  parseJSON _          = fail "Invalid vernacular name."
 
 -- Here we declare ToJSONS default functions
 -- with the help of Aeson.TH.
