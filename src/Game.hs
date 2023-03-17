@@ -68,13 +68,14 @@ postValidateGroupsJ = do
   q       <- requireCheckJsonBody :: Handler Types.GameAnswer
   let
     all_species = concat $ Types.speciesGroups q
-    TaxonomicDiscriminators _ gD = Types.answerTaxonomicDiscriminators q
+    TaxonomicDiscriminators {..} = Types.answerTaxonomicDiscriminators q
+
   records <- liftIO $ mapM loadFromDatabase all_species
 
   let
     species = catMaybes records
 
-    correct_groups          = groupSpeciesByTaxonomy gD species
+    correct_groups          = groupSpeciesByTaxonomy groupDiscriminator species
     correct_groups_sppnames = extractGroupsSpecies correct_groups
     gs                      = [correct_groups_sppnames, Types.speciesGroups q]
     [gcorrect, gplayer]     = map (simplifyGroups $ concat correct_groups_sppnames) gs
@@ -85,8 +86,11 @@ postValidateGroupsJ = do
     <> "\nCorrect: " <> show (head gs)
     <> "\nPlayer: " <> show (last gs)
 
-  returnJson $ Types.GameResult False score correct_groups_sppnames
-
+  returnJson $ Types.GameResult
+    { gameResultSuccess       = False
+    , gameResultScore         = score
+    , gameResultcorrectAnswer = correct_groups_sppnames
+    }
   where
     extractGroupsSpecies :: [[Types.RemoteResult]] -> [[Text]]
     extractGroupsSpecies = map $ map (T.toLower . remoteResultScientificName)
