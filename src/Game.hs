@@ -1,3 +1,4 @@
+{-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE RecordWildCards     #-}
 
@@ -9,7 +10,7 @@ import           Yesod.Form
 import           Control.Monad
 
 import           Data.List
-import           Data.Maybe ( catMaybes )
+import           Data.Maybe ( catMaybes, fromMaybe )
 import           Data.Text (Text)
 import qualified Data.Text as T
 
@@ -51,8 +52,8 @@ postDraftSpeciesSimulatorJ :: Handler Value
 postDraftSpeciesSimulatorJ = do
   -- TODO: Implement game parameters.
   --parameters <- requireCheckJsonBody :: Handler Types.NewGameRequest
-  (group, txd) <- liftIO $ getSpeciesGroup 0
-  liftIO              $ putStrLn "Group found."
+  (group, txd) <- fromMaybe ([], TaxonomicDiscriminators 1 2) <$> liftIO (getGlobalSpeciesGroups 0)
+  liftIO        $ putStrLn "Group found."
   -- liftIO      $ print group
   returnJson  $ Types.GameSetup
     { species  = group
@@ -95,24 +96,52 @@ postValidateGroupsJ = do
 getPrecacheGroupsJ :: Handler Value
 getPrecacheGroupsJ = do
   liftIO $ putStrLn "Precaching groups..."
-  res <- liftIO $ mapM (\_ -> getSpeciesGroup 300) [0..30]
+  res <- liftIO $ mapM (const $ getGlobalSpeciesGroups 300) [0..30]
   returnJson res
+
+-- | Endpoint to precache groups while not downloading anything.
+-- For ADMIN use only!
+getPrecacheDiscoverGroupsOnlyJ :: Handler Value
+getPrecacheDiscoverGroupsOnlyJ = do
+  liftIO $ putStrLn "Precaching groups without new content..."
+  res <- liftIO $ mapM (const discoverSpeciesGroups) [0..30]
+  returnJson res
+
+discoverSpeciesGroups :: IO (Maybe SpeciesGroup)
+discoverSpeciesGroups = do
+  image_records <- filter hasImage <$> liftIO retrieveAllDatabaseRecords
+  generateTaxonomicDiscriminators >>= getSpeciesGroups image_records 0
 
 -- | Tries to generate groups of species suitable for playing the `Game`.
 -- FIXME: The current code organization is not good: this function is huge.
-getSpeciesGroup :: Int -> IO ([Types.RemoteResult], TaxonomicDiscriminators)
-getSpeciesGroup fetch_remote_number = do
-  putStrLn $ "Fetching group of " <> show fetch_remote_number <> " species..."
+getGlobalSpeciesGroups :: Int -> IO (Maybe SpeciesGroup)
+getGlobalSpeciesGroups = \case
+  0 -> retrieveStoredGroup
+  fetch_remote_number -> do
+    putStrLn $ "Creating a new group and this might involve up to  "
+      <> show fetch_remote_number
+      <> " new downloaded species..."
 
-  when (fetch_remote_number > 0) $ liftIO $ fetchRandomSpeciesBatch fetch_remote_number
+    fetchRandomSpeciesBatch fetch_remote_number
 
-  td@(TaxonomicDiscriminators rootD gD) <- liftIO generateTaxonomicDiscriminators
+    td@(TaxonomicDiscriminators rootD gD) <- liftIO generateTaxonomicDiscriminators
 
-  recs <- liftIO retrieveAllDatabaseRecords
-  --mapM_ (print . remoteResultScientificName) recs
+    species_records <- liftIO retrieveAllDatabaseRecords
+    --mapM_ (print . remoteResultScientificName) recs
+    getSpeciesGroups species_records fetch_remote_number td
+
+-- | Fetch species groups from the data.
+getSpeciesGroups :: [RemoteResult]
+                 -> Int
+                 -> TaxonomicDiscriminators
+                 -> IO (Maybe SpeciesGroup)
+getSpeciesGroups speciesPool fetch_remote_number td@TaxonomicDiscriminators{..} = do
   let
-    groups             = groupSpeciesByTaxonomy rootD recs
-    substantial_groups = filter (isValidGroupSet td) groups
+    taxonomic_pools    = groupSpeciesByTaxonomy rootDiscriminator speciesPool
+
+  groups <- mapM (const $ getGroupFromPools taxonomic_pools) [0..30]
+
+  let  substantial_groups = filter (isValidGroupSet td) groups
 
   putStrLn $ "First round group selection: " <> show substantial_groups
   case substantial_groups of
@@ -134,18 +163,26 @@ getSpeciesGroup fetch_remote_number = do
           then do
             let result = (selected_group_img, td)
             storeGroup result
-            return result
-          else getSpeciesGroup fetch_remote_number
+            return $ Just result
+          else getGlobalSpeciesGroups fetch_remote_number
         Nothing -> retry [] td
   where
     retry g discriminators =
       if fetch_remote_number > 0
-      then getSpeciesGroup fetch_remote_number
-      else do
-        precached <- retrieveStoredGroup
-        case precached of
-          Just res -> return res
-          Nothing  -> return (g, discriminators)
+      then getGlobalSpeciesGroups fetch_remote_number
+      else retrieveStoredGroup
+
+    getGroupFromPools taxonomic_pools = do
+      taxonomic_pool <- choice taxonomic_pools
+      case taxonomic_pool of
+        Just pool -> generateSingleGroup pool
+        Nothing   -> pure []
+
+-- | Randomically generate a group from a pool of species records.
+generateSingleGroup :: [RemoteResult] -> IO [RemoteResult]
+generateSingleGroup speciesPool = do
+  n <- fromMaybe 4 <$> choice [3..6 :: Int]
+  catMaybes <$> mapM (const $ choice speciesPool) [0..n]
 
 -- * Group storage and loading routines.
 
