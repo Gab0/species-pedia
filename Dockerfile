@@ -5,6 +5,7 @@ COPY species-backend.cabal /species-backend/species-backend.cabal
 WORKDIR /species-backend
 
 RUN stack setup
+RUN stack upgrade
 
 COPY . /species-backend
 
