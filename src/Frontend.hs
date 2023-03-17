@@ -22,7 +22,7 @@ import           Foundation
 
 import qualified Types
 
-
+-- This module is DEPRECATED since we now use the dedicated React frontend.
 instance RenderMessage App FormMessage where
     renderMessage _ _ = defaultFormMessage
 
@@ -122,14 +122,13 @@ postSearchR = do
 
       _             -> [whamlet| Error|]
 
--- | Define the main JSON endpoint.
+-- | Define encyclopedia search query JSON endpoint.
 postSearchJ :: HandlerFor App Value
 postSearchJ = do
   q <- requireCheckJsonBody :: Handler Types.SpeciesQuery
   let query_string = Types.queryContent q
 
-  --query_string   <- fromMaybe "" <$> lookupPostParam "query"
-  liftIO $ putStrLn $ T.unpack query_string
+  liftIO $ putStrLn $ "Encyclopedia search query: " <> T.unpack query_string
   either_content <- liftIO
                   $ manageCachedRemoteContent query_string
 
@@ -147,17 +146,21 @@ showResultPage (Right content) =
     query_string = T.unpack
                  $ Types.remoteResultOriginalQuery content
 
-    showResults (Types.RemoteResult _ _ results image_urls wikipedia _) = do
-      mapM_ (\image_url -> [whamlet|<img src="#{image_url}">|]) image_urls
+    showResults (Types.RemoteResult _ _ results image_urls wikipedia) = do
+      case image_urls of
+        Types.Retrieved imgs -> mapM_ (\image_url -> [whamlet|<img src="#{image_url}">|]) imgs
+        _                    -> return ()
       horizontalLine
       showParagraph wikipedia
       horizontalLine
       renderSingleGBIFResult 1 results
 showResultPage _               = [whamlet|Error processing request.|]
 
-showParagraph :: Maybe T.Text -> WidgetFor App ()
-showParagraph (Just content) = [whamlet| #{content}|]
-showParagraph Nothing        = [whamlet| Content not found.|]
+
+
+showParagraph :: Types.RemoteContent T.Text -> WidgetFor App ()
+showParagraph (Types.Retrieved content) = [whamlet| #{content}|]
+showParagraph _                         = [whamlet| Content not found.|]
 
 horizontalLine = [whamlet|<hr>|]
 

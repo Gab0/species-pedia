@@ -3,62 +3,82 @@
 
 module Storage where
 
-import           System.Random
+import           Control.Monad.Trans.Reader
+import           Control.Monad.Logger
+import           Control.Monad.Trans.Resource.Internal
 
+import           System.Random
+import           System.Environment.Blank
 import           Data.Maybe
 import qualified Data.Text as T
 
-import           Database.Persist
+import Database.Persist
+    ( selectList,
+      Entity(entityKey, entityVal),
+      PersistStoreWrite(insert_, replace),
+      PersistUniqueRead(getBy) )
 import           Database.Persist.Sqlite
-import           Database.Persist.TH
-import           Control.Monad.IO.Class
 import           Types
 
-databaseFilepath :: T.Text
-databaseFilepath = "species-db.sqlite" -- could be ":memory:" for non-persistent db.
+-- | The filepath could be ":memory:" for non-persistent db.
+getDatabaseFilepath :: IO T.Text
+getDatabaseFilepath = T.pack <$> getEnvDefault "DATABASE_FILEPATH" "species-db.sqlite"
 
 -- | Create a new database.
 initializeDatabase :: IO ()
-initializeDatabase =
-  runSqlite databaseFilepath $ runMigration migrateAll
+initializeDatabase = runDB $ runMigration migrateAll
 
 -- | Load a record that matches a string from the database.
 loadFromDatabase :: T.Text -> IO (Maybe RemoteResult)
-loadFromDatabase search_query =
-  runSqlite databaseFilepath $ do
+loadFromDatabase search_query = runDB $ do
     record <- getBy
             $ Types.QueryString search_query
 
-    return $  entityVal
-          <$> record
+    return $ entityVal <$> record
+
+-- | Run a database action.
+runDB :: ReaderT SqlBackend (NoLoggingT (ResourceT IO)) b -> IO b
+runDB f = do
+  databaseFilepath <- getDatabaseFilepath
+  runSqlite databaseFilepath f
 
 -- | Insert a record in the database.
 insertInDatabase :: Types.RemoteResult -> IO ()
-insertInDatabase n =
-  runSqlite databaseFilepath $ do
-    existent <- getBy $ Types.QueryString $ remoteResultScientificName n
-    case existent of
-      Just k  -> replace (entityKey k) n
-      Nothing -> insert_ n
+insertInDatabase n = runDB $ do
+  existent <- getBy $ Types.QueryString $ remoteResultScientificName n
+  case existent of
+    Just k  -> replace (entityKey k) n
+    Nothing -> insert_ n
 
 -- | Insert multiple records in the database.
 insertInDatabaseBatch :: [Types.RemoteResult] -> IO ()
 insertInDatabaseBatch = mapM_ insertInDatabase
 
 -- | Retrieve all records from the database.
-retrieveGroupFromDatabase :: IO [RemoteResult]
-retrieveGroupFromDatabase =
-  runSqlite databaseFilepath $ do
+retrieveAllDatabaseRecords :: IO [RemoteResult]
+retrieveAllDatabaseRecords = runDB $ do
     (records :: [RemoteResult]) <-  map entityVal
                                 <$> selectList [] []
     return records
 
+-- | Retrieve all game seeds from the database.
+retrieveAllDatabaseGameSeeds :: IO [GameGroup]
+retrieveAllDatabaseGameSeeds = runDB $ do
+    (records :: [GameGroup]) <- map entityVal <$> selectList [] []
+    return records
+
+-- | Insert a GameSeed object in the database.
+insertGameSeedInDatabase :: GameGroup -> IO ()
+insertGameSeedInDatabase = runDB . insert_
+
 -- | Retrieve n randomly-selected `RemoteResult` elements.
 draftFromDatabase :: Int -> IO [RemoteResult]
 draftFromDatabase num = do
-  records  <- retrieveGroupFromDatabase
-  sequence  $ replicate num (choice records)
+  records   <- retrieveAllDatabaseRecords
+  retrieved <- sequence $ replicate num (choice records)
+  return     $ catMaybes retrieved
 
 -- | Select a random element from a list.
-choice :: [a] -> IO a
-choice r = (!!) r <$> randomRIO (0, length r - 1)
+choice :: [a] -> IO (Maybe a)
+choice [] = return Nothing
+choice r  = Just . (!!) r <$> randomRIO (0, length r - 1)

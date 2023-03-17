@@ -3,10 +3,8 @@
 module RemoteResources.GBIF where
 
 import           System.IO
-import           System.Random
 
 import           Network.HTTP.Conduit
-import           Network.HTTP.Types.Status
 
 import           Network.HTTP.Types.URI
 
@@ -15,9 +13,9 @@ import qualified Data.Text as T
 import qualified Data.ByteString.UTF8 as UTF8
 import qualified Data.ByteString.Lazy.UTF8 as LUTF8
 
-
 import           Data.Aeson
-
+import           RemoteResources.Core
+import           Storage
 import           Types
 
 
@@ -37,18 +35,12 @@ fetchInformationGBIF query =
                  ]
 
 -- | Select a random ID from the ID list and try to fetch it from GBIF.
-fetchRandomSpecies :: [String] -> IO (Maybe LUTF8.ByteString)
+fetchRandomSpecies :: [String] -> IO (Maybe String)
 fetchRandomSpecies all_id_list = do
-  species_id <-  (!!) all_id_list
-             <$> (randomRIO (0, length all_id_list -1) :: IO Int)
-  request  <- parseRequest $ baseUrlGBIF ++ species_id
-  manager  <- newManager tlsManagerSettings
-  response <- httpLbs request manager
-
-  return $ case responseStatus response of
-    (Status 200 _) -> Just $ responseBody response
-    _              -> Nothing
-
+  species_id    <- choice all_id_list
+  case species_id of
+    Just sid -> makeGetRequest $ baseUrlGBIF ++ sid
+    Nothing  -> return Nothing
 
 
 -- | Decode GBIF response JSON according to our custom types

@@ -9,27 +9,61 @@
 {-# LANGUAGE TypeFamilies               #-}
 {-# LANGUAGE DerivingStrategies         #-}
 {-# LANGUAGE StandaloneDeriving         #-}
+{-# LANGUAGE RecordWildCards            #-}
 {-# LANGUAGE UndecidableInstances       #-}
 {-# LANGUAGE DataKinds                  #-}
 {-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE DeriveAnyClass             #-}
 {-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
+{-# LANGUAGE InstanceSigs               #-}
 
 module Types where
 
-import           Data.Text     (Text, intercalate, splitOn)
-import           Data.Aeson
+import           Data.Text    (Text)
+import qualified Data.Text as T
+import Data.Aeson
+    ( FromJSON(parseJSON),
+      Value(Object),
+      (.!=),
+      (.:),
+      (.:?),
+      defaultOptions )
 import           Data.Aeson.TH
 import           Database.Persist
 import           Data.Default
 import           Database.Persist.TH
-import           Language.Haskell.TH
 import           Data.Aeson.TypeScript.TH
+import           Data.Proxy
+import Database.Persist.Sql
+
+import           Language.Haskell.TH
+import           Text.Read
 
 import qualified Data.ByteString.Lazy.UTF8 as LUTF8
-import           Generics.Deriving.Semigroup
+import Generics.Deriving.Semigroup ()
 import           GHC.Generics (Generic)
+
+data TaxonomicDiscriminators = TaxonomicDiscriminators
+  { rootDiscriminator   :: !Int
+  , groupDiscriminator :: !Int
+  } deriving (Show, Read, Generic)
+
+$(deriveToJSON defaultOptions ''TaxonomicDiscriminators)
+$(deriveFromJSON defaultOptions ''TaxonomicDiscriminators)
+$(deriveTypeScript defaultOptions ''TaxonomicDiscriminators)
+
+instance PersistField TaxonomicDiscriminators where
+  toPersistValue TaxonomicDiscriminators {..} = toPersistValue $ show (rootDiscriminator, groupDiscriminator)
+  fromPersistValue :: PersistValue -> Either Text TaxonomicDiscriminators
+  fromPersistValue (PersistText pv) =
+    case readMaybe $ T.unpack pv of
+      Just (a, b) -> Right $ TaxonomicDiscriminators a b
+      Nothing     -> Left $ "Unable to parse " <> pv <> "."
+  fromPersistValue e = Left $ "Bad input value of" <> T.pack (show e)
+
+instance PersistFieldSql TaxonomicDiscriminators where
+  sqlType _ = SqlString
 
 -- Declare the datatypes inside this TemplateHaskell quasi-quoter.
 -- TH creates the data types and derivings to allow the usage
@@ -46,11 +80,11 @@ RemoteResult
     originalQuery Text
     scientificName Text
     information SpeciesInformation
-    images [String]
-    wikipedia Text Maybe
-    skeletonState Bool
+    images (RemoteContent [String])
+    wikipedia (RemoteContent Text)
     QueryString scientificName
     deriving Show
+    deriving Eq
 SpeciesInformation
     kingdom Text Maybe
     phylum Text Maybe
@@ -66,11 +100,16 @@ VernacularName
     vernacularName Text
     deriving Show
     deriving Eq
+GameGroup
+    species [Text]
+    taxonomicDiscriminators TaxonomicDiscriminators
 |]
 
+type SpeciesGroup = ([Types.RemoteResult], TaxonomicDiscriminators)
+
 data SpeciesQuery = SpeciesQuery
-  { queryContent  :: Text
-  , jsonResponse  :: Bool
+  { queryContent  :: !Text
+  , jsonResponse  :: !Bool
   }
   deriving Show
 
@@ -78,15 +117,33 @@ instance Default SpeciesInformation where
   def = SpeciesInformation Nothing Nothing Nothing Nothing Nothing [] "" []
 
 instance Default RemoteResult where
-  def = RemoteResult "" "" def [] Nothing True
+  def = RemoteResult "" "" def NeverTried NeverTried
 
+-- | Encapsulates retrievable remote content to avoid querying
+-- unavailable content more than once.
+data RemoteContent a = Retrieved a
+                     | NotAvailable
+                     | NeverTried
+  deriving (Eq, Show, Read)
+
+instance (Show a, Read a) => PersistField (RemoteContent a) where
+    toPersistValue = toPersistValue . show
+    fromPersistValue (PersistText pv) =
+        case readMaybe $ T.unpack pv of
+            Just w  -> Right w
+            Nothing -> Left $ T.pack $ "Unable to parse RemoteContent: <" <> show pv <> ">"
+    fromPersistValue _                = Left "Weird RemoteContent result."
+
+instance (Show a, Read a) => PersistFieldSql (RemoteContent a) where
+    sqlType :: (Show a, Read a) => Proxy (RemoteContent a) -> SqlType
+    sqlType _ = SqlString
 
 -- | Stores relevant information from a direct fetch from GBIF.
 -- These are retrieved by using numerical ID.
 -- FIXME: Deprecated?
 data GBIFFetchResult = GBIFFetchResult
-  { fetchRank           :: Text
-  , fetchScientificName :: Text
+  { fetchRank           :: !T.Text
+  , fetchScientificName :: !T.Text
   }
   deriving (Show, Eq)
 
@@ -94,6 +151,7 @@ instance FromJSON GBIFFetchResult where
   parseJSON (Object v) = GBIFFetchResult
                       <$> v .: "rank"
                       <*> v .: "scientificName"
+  parseJSON _          = fail "Invalid GBIF result."
 
 -- | Stores a species search result from GBIF.
 newtype GBIFSearchResult = GBIFSearchResult [SpeciesInformation]
@@ -102,7 +160,7 @@ newtype GBIFSearchResult = GBIFSearchResult [SpeciesInformation]
 instance FromJSON GBIFSearchResult where
   parseJSON (Object v) =  GBIFSearchResult
                       <$> v .: "results"
-  parseJSON _          = fail ""
+  parseJSON _          = fail "Invalid GBIF search result."
 
 instance FromJSON SpeciesInformation where
   parseJSON (Object v) =
@@ -120,7 +178,7 @@ instance FromJSON SpeciesInformation where
 instance FromJSON VernacularName where
   parseJSON (Object v) =
     VernacularName <$> v .: "vernacularName"
-  parseJSON _          = fail ""
+  parseJSON _          = fail "Invalid vernacular name."
 
 -- Here we declare ToJSONS default functions
 -- with the help of Aeson.TH.
@@ -133,6 +191,7 @@ $(deriveFromJSON defaultOptions ''SpeciesQuery)
 $(deriveToJSON defaultOptions   ''VernacularName)
 $(deriveToJSON defaultOptions   ''SpeciesInformation)
 $(deriveToJSON defaultOptions   ''RemoteResult)
+$(deriveToJSON defaultOptions   ''RemoteContent)
 
 -- So, not going this way:
 -- $(deriveToJSON defaultOptions ''FormResult SpeciesQuery)
@@ -144,6 +203,7 @@ $(deriveTypeScript defaultOptions ''SpeciesQuery)
 $(deriveTypeScript defaultOptions ''VernacularName)
 $(deriveTypeScript defaultOptions ''SpeciesInformation)
 $(deriveTypeScript defaultOptions ''RemoteResult)
+$(deriveTypeScript defaultOptions ''RemoteContent)
 
 
 -- | Semigroup instance is used to combine two
@@ -154,27 +214,28 @@ instance Semigroup SpeciesInformation where
      SpeciesInformation (maybeText k0 k1) (maybeText p0 p1) (maybeText o0 o1) (maybeText g0 g1) (maybeText f0 f1) (ts0 <> ts1) sn0 (vn0 <> vn1)
     where
       maybeText (Just a0) (Just a1) = Just
-                                    $ manageVariations a0 a1
+                                    $ combineVariations a0 a1
       maybeText a b                 = a <> b
 
-      manageVariations :: Text -> Text -> Text
-      manageVariations t0 t1
+      combineVariations :: Text -> Text -> Text
+      combineVariations t0 t1
         | t0 == t1  = t0
-        | otherwise = case t1 `elem` content_list of
-            True  -> t0
-            False -> intercalate separator $ t1 : content_list
+        | otherwise =
+          if t1 `elem` content_list
+          then t0
+          else T.intercalate separator $ t1 : content_list
           where
-            content_list = splitOn separator t0
+            content_list = T.splitOn separator t0
             separator    = " | "
 
 -- | Parameters that define a game session.
 -- (GAME STEP 1: Client sents this to the server.)
 -- TODO: Most parameter effects are yet to be implemented.
 data NewGameRequest = NewGameRequest
-  { speciesNumber  :: Int
-  , groupNumber    :: Int
-  , speciesGroup   :: Int
-  , gameDifficulty :: Int
+  { speciesNumber  :: !Int
+  , groupNumber    :: !Int
+  , speciesGroup   :: !Int
+  , gameDifficulty :: !Int
   }
 
 $(deriveFromJSON defaultOptions ''NewGameRequest)
@@ -182,8 +243,10 @@ $(deriveFromJSON defaultOptions ''NewGameRequest)
 -- | Information required to set a game up.
 -- (GAME STEP 2: Server sends this to the client.)
 data GameSetup = GameSetup
-  { species :: [RemoteResult]
-  , textTip :: Text
+  { species                     :: ![RemoteResult]
+  , nbGroups                    :: !Int
+  , textTip                     :: !Text
+  , gameTaxonomicDiscriminators :: !TaxonomicDiscriminators
   }
 
 $(deriveToJSON defaultOptions ''GameSetup)
@@ -191,16 +254,18 @@ $(deriveToJSON defaultOptions ''GameSetup)
 -- | How the player organized the species.
 -- (GAME STEP 3: Client sents this to the server.)
 data GameAnswer = GameAnswer
-  { speciesGroups :: [[Text]]
+  { speciesGroups                 :: ![[Text]]
+  , answerTaxonomicDiscriminators :: !TaxonomicDiscriminators
   }
 
 $(deriveFromJSON defaultOptions ''GameAnswer)
 
 -- | Contains the result of a game.
--- (GAME STEP 4: Server sends this to the client: Game Over.)
+-- (GAME STEP 4: Server sends scores to the client: Game Over, well done (maybe)!)
 data GameResult = GameResult
-  { success       :: Bool
-  , correctAnswer :: [[Text]]
+  { gameResultSuccess       :: !Bool
+  , gameResultScore         :: !Double
+  , gameResultcorrectAnswer :: ![[Text]]
   }
 
 $(deriveToJSON defaultOptions ''GameResult)
@@ -209,3 +274,12 @@ $(deriveTypeScript defaultOptions ''NewGameRequest)
 $(deriveTypeScript defaultOptions ''GameSetup)
 $(deriveTypeScript defaultOptions ''GameAnswer)
 $(deriveTypeScript defaultOptions ''GameResult)
+
+data DatabaseDebugInformation = DatabaseDebugInformation
+  { databaseDebugNumberOfSpecies  :: !Int
+  , databaseDebugNumberOfPictured :: !Int
+  , databaseDebugNumberOfGroups   :: !Int
+  }
+
+$(deriveToJSON defaultOptions ''DatabaseDebugInformation)
+
