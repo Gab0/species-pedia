@@ -14,12 +14,14 @@ import           Data.Maybe ( catMaybes, fromMaybe )
 import           Data.Text (Text)
 import qualified Data.Text as T
 
+import           System.Metrics.Prometheus.Metric.Counter
+
 import           RemoteResources.Management
+import           Metrics
 import           Networks.Relationships
 import           Networks.GroupScore
 import           Foundation
 import           Storage
-
 import           Types
 
 -- | Taxonomic discrimators are the taxonomic levels used to
@@ -50,6 +52,8 @@ generateTips TaxonomicDiscriminators {..} = "All species belong to the same "
 -- ready to be consumed by the frontend.
 postDraftSpeciesSimulatorJ :: Handler Value
 postDraftSpeciesSimulatorJ = do
+  App { .. } <- getYesod
+  liftIO $ inc $ metricsServedGames $ prometheusHandlers prometheusState
   -- TODO: Implement game parameters.
   --parameters <- requireCheckJsonBody :: Handler Types.NewGameRequest
   (group, txd) <- fromMaybe ([], TaxonomicDiscriminators 1 2) <$> liftIO (getGlobalSpeciesGroups 0)

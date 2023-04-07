@@ -2,19 +2,23 @@
 {-# LANGUAGE OverloadedStrings     #-}
 {-# LANGUAGE TemplateHaskell       #-}
 {-# LANGUAGE TypeFamilies          #-}
+{-# LANGUAGE InstanceSigs #-}
 
 module Foundation where
 
+import           System.Metrics.Prometheus.Registry
 import           Yesod
 import           Yesod.Static
-
+import           Metrics
 -- Define URL Routes.
 data App = App
  { getStatic :: Static
+ , prometheusState :: PrometheusState
  }
+
 mkYesodData "App" [parseRoutes|
-/ HomeR GET
--- ^ Main home page;
+/ DatabaseInformationJ GET
+-- ^ Show statistcs on database contents;
 /react        HomeReactR GET
 -- ^ React homepage;
 /search       SearchR POST
@@ -37,8 +41,9 @@ mkYesodData "App" [parseRoutes|
 -- ^ Fetch and build species groups for later use in the game;
 /database/buildgroups PrecacheDiscoverGroupsOnlyJ GET
 -- ^ Build species groups based on known species for later use in the game;
-/database/info DatabaseInformationJ GET
--- ^ Show statistcs on database contents;
+
+/metrics PrometheusMetricsR GET
+-- ^ Prometheus metrics
 |]
 
 instance Yesod App

@@ -4,6 +4,8 @@
 {-# LANGUAGE TypeFamilies          #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleContexts      #-}
+{-# LANGUAGE PolyKinds             #-}
+{-# LANGUAGE DataKinds             #-}
 
 module Main where
 
@@ -15,6 +17,7 @@ import           Yesod.Static
 import           Network.Wai.Middleware.Cors
 import           Network.Wai.Handler.Warp (run)
 
+import           Data.Text ( Text )
 import           Data.Proxy
 import           Data.Aeson.TypeScript.TH
 
@@ -22,6 +25,7 @@ import           Debug
 import           Foundation
 import           Frontend
 import           Game
+import           Metrics
 import           Storage
 import           Types
 
@@ -69,8 +73,11 @@ main = do
           ++ spacer
   static@(Static settings) <- static "static/"
   writeTSBindings
+
+  prometheusState <- initializePrometheusState
+
   -- Convert the Yesod website into a WAI Application.
-  app     <- toWaiAppPlain $ App static
+  app     <- toWaiAppPlain $ App static prometheusState
   run port $ allowCors app
   where
     port   = 5000
