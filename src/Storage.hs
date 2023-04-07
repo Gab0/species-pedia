@@ -3,24 +3,33 @@
 
 module Storage where
 
-import           Control.Monad.Trans.Reader
+import           Control.Monad.Trans.Reader ( ReaderT (..) )
 import           Control.Monad.Logger
+import           Control.Monad.Trans.Resource
 import           Control.Monad.Trans.Resource.Internal
+
+import           Data.ByteString ( ByteString )
+import           Data.Maybe ( catMaybes )
+import qualified Data.Text as T
 
 import           System.Random
 import           System.Environment.Blank
-import           Data.Maybe
-import qualified Data.Text as T
 
 import Database.Persist
     ( selectList,
       Entity(entityKey, entityVal),
       PersistStoreWrite(insert_, replace),
       PersistUniqueRead(getBy) )
-import           Database.Persist.Sqlite
+
+import           Database.Persist.Postgresql
 import           Types
 
+-- | PostgreSQL connection string.
+databaseConnection :: ByteString
+databaseConnection = "host=speciespedia-database port=5432 user=postgres dbname=postgres"
+
 -- | The filepath could be ":memory:" for non-persistent db.
+-- FIXME: SQLite is deprecated. Should be support it along with PostgreSQL?
 getDatabaseFilepath :: IO T.Text
 getDatabaseFilepath = T.pack <$> getEnvDefault "DATABASE_FILEPATH" "species-db.sqlite"
 
@@ -38,9 +47,7 @@ loadFromDatabase search_query = runDB $ do
 
 -- | Run a database action.
 runDB :: ReaderT SqlBackend (NoLoggingT (ResourceT IO)) b -> IO b
-runDB f = do
-  databaseFilepath <- getDatabaseFilepath
-  runSqlite databaseFilepath f
+runDB = runResourceT . runNoLoggingT . withPostgresqlConn databaseConnection . runReaderT
 
 -- | Insert a record in the database.
 insertInDatabase :: Types.RemoteResult -> IO ()
