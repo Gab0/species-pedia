@@ -18,14 +18,13 @@ matchSpecies :: Int                -- ^ Taxonomic Discrimination Level
              -> RemoteResult       -- ^ Species A
              -> RemoteResult       -- ^ Species B
              -> Bool               -- ^ Same group?
-matchSpecies tdl s0 s1 = all (==True)
-                       $ map evaluate fieldGetters
+matchSpecies tdl s0 s1 = all ((==) True . evaluate) fieldGetters
   where
     fieldGetters         = take tdl genusFields
     evaluate (_, getter) = attributeEqual
                          $ map (getter . remoteResultInformation) [s0, s1]
 
-
+-- | Checks if all members of a list of `Maybe Text`s are equivalent.
 attributeEqual :: [Maybe T.Text] -> Bool
 attributeEqual attrs | not $ all isJust attrs = False
 attributeEqual attrs =
