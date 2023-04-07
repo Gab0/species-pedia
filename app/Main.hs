@@ -41,7 +41,13 @@ generateTSBindings :: String
 generateTSBindings = formatTSDeclarations (
   getTypeScriptDeclarations (Proxy :: Proxy VernacularName) <>
   getTypeScriptDeclarations (Proxy :: Proxy SpeciesInformation) <>
-  getTypeScriptDeclarations (Proxy :: Proxy RemoteResult)
+  getTypeScriptDeclarations (Proxy :: Proxy RemoteResult) <>
+  getTypeScriptDeclarations (Proxy :: Proxy GameAnswer) <>
+  getTypeScriptDeclarations (Proxy :: Proxy GameSetup) <>
+  getTypeScriptDeclarations (Proxy :: Proxy GameResult) <>
+  getTypeScriptDeclarations (Proxy :: Proxy NewGameRequest) <>
+  getTypeScriptDeclarations (Proxy :: Proxy (RemoteContent T)) <>
+  getTypeScriptDeclarations (Proxy :: Proxy TaxonomicDiscriminators)
   )
 
 writeTSBindings :: IO ()
